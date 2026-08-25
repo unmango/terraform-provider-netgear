@@ -8,7 +8,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"gitlab.com/unmango/terraform/terraform-provider-netgear/internal/provider"
+	"github.com/UnstoppableMango/terraform-provider-netgear/internal/provider"
 )
 
 var testProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){

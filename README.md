@@ -13,7 +13,7 @@ The provider builds and serves, but no resources or data sources are implemented
 terraform {
   required_providers {
     netgear = {
-      source = "unmango/netgear"
+      source = "UnstoppableMango/netgear"
     }
   }
 }

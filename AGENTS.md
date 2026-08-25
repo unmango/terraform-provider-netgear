@@ -3,8 +3,8 @@
 ## What this is
 
 A Terraform/OpenTofu provider for NETGEAR devices using the Terraform Plugin Framework (protocol 6).
-Go module: `gitlab.com/unmango/terraform/terraform-provider-netgear`.
-Provider address: `registry.opentofu.org/unmango/netgear`.
+Go module: `github.com/UnstoppableMango/terraform-provider-netgear`.
+Provider address: `registry.opentofu.org/UnstoppableMango/netgear`.
 The project is nix first: the flake builds the provider with gomod2nix and provides the dev shell with all tooling.
 
 ## Commands
