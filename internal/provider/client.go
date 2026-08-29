@@ -6,6 +6,8 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+
+	"github.com/UnstoppableMango/terraform-provider-netgear/internal/fastpath"
 )
 
 // Client is the FASTPATH CLI surface the resources depend on.
@@ -27,24 +29,68 @@ type prober interface {
 	Probe(ctx context.Context) error
 }
 
-// clientFromProviderData extracts the configured Client from resource or data source
-// provider data. It returns nil when the framework has not configured the provider yet,
-// which is expected during validation and planning.
-func clientFromProviderData(providerData any, diags *diag.Diagnostics) Client {
+// switchData is what the provider hands to each resource: the client plus the
+// settings a resource needs to honour.
+type switchData struct {
+	client     Client
+	saveConfig bool
+}
+
+// apply runs commands and then persists them to NVRAM when the provider is
+// configured to. FASTPATH applies changes live, so a change that is not saved is
+// lost at the next reboot.
+func (d *switchData) apply(ctx context.Context, cmds ...string) (string, error) {
+	out, err := d.client.Run(ctx, cmds...)
+	if err != nil {
+		return out, err
+	}
+
+	if !d.saveConfig {
+		return out, nil
+	}
+
+	return out, d.client.Save(ctx)
+}
+
+// runningConfig reads and parses `show running-config`.
+func (d *switchData) runningConfig(ctx context.Context) (*fastpath.RunningConfig, error) {
+	out, err := d.client.RunningConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return fastpath.ParseRunningConfig(out), nil
+}
+
+// switchFromProviderData extracts the configured switch from resource or data
+// source provider data. It returns nil when the framework has not configured the
+// provider yet, which is expected during validation and planning.
+func switchFromProviderData(providerData any, diags *diag.Diagnostics) *switchData {
 	if providerData == nil {
 		return nil
 	}
 
-	client, ok := providerData.(Client)
+	data, ok := providerData.(*switchData)
 	if !ok {
 		diags.AddError(
 			"Unexpected Provider Data Type",
-			fmt.Sprintf("Expected provider.Client, got %T. Please report this to the provider developers.", providerData),
+			fmt.Sprintf("Expected *provider.switchData, got %T. Please report this to the provider developers.", providerData),
 		)
 		return nil
 	}
 
-	return client
+	return data
+}
+
+// errNotConfigured is the diagnostic a resource reports when it has no client,
+// which means provider configuration did not complete.
+func errNotConfigured(resourceType string) diag.Diagnostics {
+	var diags diag.Diagnostics
+	diags.AddError(
+		"Provider Not Configured",
+		fmt.Sprintf("%s has no switch connection. Check the provider block for errors reported above.", resourceType),
+	)
+	return diags
 }
 
 // portSet converts a set of FASTPATH port ids into a lookup keyed by port. A null

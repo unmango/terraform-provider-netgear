@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -24,7 +25,7 @@ var (
 )
 
 type vlanResource struct {
-	client Client
+	data *switchData
 }
 
 type vlanResourceModel struct {
@@ -94,7 +95,7 @@ func (r *vlanResource) Schema(ctx context.Context, req resource.SchemaRequest, r
 }
 
 func (r *vlanResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	r.client = clientFromProviderData(req.ProviderData, &resp.Diagnostics)
+	r.data = switchFromProviderData(req.ProviderData, &resp.Diagnostics)
 }
 
 // ValidateConfig rejects a port that appears in both membership sets, which
@@ -133,16 +134,44 @@ func (r *vlanResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
-	// configure
-	// vlan database
-	// vlan <vlan_id>
-	// vlan name <vlan_id> "<name>"
-	// exit
-	// then per member port:
-	// interface <port>
-	// vlan participation include <vlan_id>
-	// vlan tagging <vlan_id>          (tagged members only)
-	resp.Diagnostics.Append(notImplemented("netgear_vlan", "Create")...)
+	if r.data == nil {
+		resp.Diagnostics.Append(errNotConfigured("netgear_vlan")...)
+		return
+	}
+
+	members, ok := vlanMembers(ctx, plan, &resp.Diagnostics)
+	if !ok {
+		return
+	}
+
+	id := plan.VlanID.ValueInt64()
+
+	cmds := []string{"configure", "vlan database", "vlan " + itoa(id)}
+	if !plan.Name.IsNull() {
+		cmds = append(cmds, "vlan name "+itoa(id)+" "+quote(plan.Name.ValueString()))
+	}
+	if plan.Routing.ValueBool() {
+		cmds = append(cmds, "vlan routing "+itoa(id))
+	}
+	cmds = append(cmds, "exit")
+
+	for _, port := range members.ports() {
+		cmds = append(cmds, "interface "+port, "vlan participation include "+itoa(id))
+		if members.tagged[port] {
+			cmds = append(cmds, "vlan tagging "+itoa(id))
+		}
+		cmds = append(cmds, "exit")
+	}
+	cmds = append(cmds, "exit")
+
+	if _, err := r.data.apply(ctx, cmds...); err != nil {
+		resp.Diagnostics.AddError("Unable to Create the VLAN", err.Error())
+		return
+	}
+
+	plan.ID = types.StringValue(itoa(id))
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
 func (r *vlanResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -152,10 +181,30 @@ func (r *vlanResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
-	// Read `show running-config` once and parse the vlan database block plus each
-	// interface's `vlan participation` and `vlan tagging` lines. A VLAN that is no
-	// longer present calls resp.State.RemoveResource(ctx) and returns.
-	resp.Diagnostics.Append(notImplemented("netgear_vlan", "Read")...)
+	if r.data == nil {
+		resp.Diagnostics.Append(errNotConfigured("netgear_vlan")...)
+		return
+	}
+
+	config, err := r.data.runningConfig(ctx)
+	if err != nil {
+		resp.Diagnostics.AddError("Unable to Read the Switch Configuration", err.Error())
+		return
+	}
+
+	vlan, found := config.VLAN(state.VlanID.ValueInt64())
+	if !found {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	state.ID = types.StringValue(itoa(vlan.ID))
+	state.Name = stringOrNull(state.Name, vlan.Name)
+	state.Routing = types.BoolValue(vlan.Routing)
+	state.TaggedPorts = setOrNull(state.TaggedPorts, vlan.Tagged)
+	state.UntaggedPorts = setOrNull(state.UntaggedPorts, vlan.Untagged)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 func (r *vlanResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -166,11 +215,58 @@ func (r *vlanResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		return
 	}
 
-	// Diff the membership sets against state:
-	// removed members:            interface <port>; vlan participation exclude <vlan_id>
-	// tagged becoming untagged:   interface <port>; no vlan tagging <vlan_id>
-	// renames:                    vlan database; vlan name <vlan_id> "<name>"
-	resp.Diagnostics.Append(notImplemented("netgear_vlan", "Update")...)
+	if r.data == nil {
+		resp.Diagnostics.Append(errNotConfigured("netgear_vlan")...)
+		return
+	}
+
+	planned, ok := vlanMembers(ctx, plan, &resp.Diagnostics)
+	if !ok {
+		return
+	}
+	current, ok := vlanMembers(ctx, state, &resp.Diagnostics)
+	if !ok {
+		return
+	}
+
+	id := plan.VlanID.ValueInt64()
+
+	var cmds []string
+	if !plan.Name.Equal(state.Name) {
+		cmds = append(cmds, "vlan database")
+		if plan.Name.IsNull() {
+			cmds = append(cmds, "no vlan name "+itoa(id))
+		} else {
+			cmds = append(cmds, "vlan name "+itoa(id)+" "+quote(plan.Name.ValueString()))
+		}
+		cmds = append(cmds, "exit")
+	}
+
+	if !plan.Routing.Equal(state.Routing) {
+		cmds = append(cmds, "vlan database")
+		if plan.Routing.ValueBool() {
+			cmds = append(cmds, "vlan routing "+itoa(id))
+		} else {
+			cmds = append(cmds, "no vlan routing "+itoa(id))
+		}
+		cmds = append(cmds, "exit")
+	}
+
+	cmds = append(cmds, membershipCommands(id, current, planned)...)
+
+	if len(cmds) > 0 {
+		cmds = append([]string{"configure"}, cmds...)
+		cmds = append(cmds, "exit")
+
+		if _, err := r.data.apply(ctx, cmds...); err != nil {
+			resp.Diagnostics.AddError("Unable to Update the VLAN", err.Error())
+			return
+		}
+	}
+
+	plan.ID = types.StringValue(itoa(id))
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
 func (r *vlanResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -188,10 +284,92 @@ func (r *vlanResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 		return
 	}
 
-	// configure
-	// vlan database
-	// no vlan <vlan_id>
-	resp.Diagnostics.Append(notImplemented("netgear_vlan", "Delete")...)
+	if r.data == nil {
+		resp.Diagnostics.Append(errNotConfigured("netgear_vlan")...)
+		return
+	}
+
+	id := state.VlanID.ValueInt64()
+
+	if _, err := r.data.apply(ctx,
+		"configure",
+		"vlan database",
+		"no vlan "+itoa(id),
+		"exit",
+		"exit",
+	); err != nil {
+		resp.Diagnostics.AddError("Unable to Delete the VLAN", err.Error())
+	}
+}
+
+// vlanMembership is the membership of one VLAN, keyed by port.
+type vlanMembership struct {
+	member map[string]struct{}
+	tagged map[string]bool
+}
+
+// ports returns the member ports in a stable order.
+func (m vlanMembership) ports() []string {
+	return sortedKeys(m.member)
+}
+
+// vlanMembers reads the two membership sets off a model into one lookup.
+func vlanMembers(ctx context.Context, model vlanResourceModel, diags *diag.Diagnostics) (vlanMembership, bool) {
+	members := vlanMembership{
+		member: map[string]struct{}{},
+		tagged: map[string]bool{},
+	}
+
+	tagged, ok := portSet(ctx, model.TaggedPorts, diags)
+	if !ok {
+		return members, false
+	}
+	untagged, ok := portSet(ctx, model.UntaggedPorts, diags)
+	if !ok {
+		return members, false
+	}
+
+	for port := range tagged {
+		members.member[port] = struct{}{}
+		members.tagged[port] = true
+	}
+	for port := range untagged {
+		members.member[port] = struct{}{}
+	}
+
+	return members, true
+}
+
+// membershipCommands moves the switch from current membership to planned, leaving
+// ports that are already correct untouched.
+func membershipCommands(id int64, current, planned vlanMembership) []string {
+	var cmds []string
+
+	for _, port := range planned.ports() {
+		_, joined := current.member[port]
+
+		switch {
+		case !joined:
+			cmds = append(cmds, "interface "+port, "vlan participation include "+itoa(id))
+			if planned.tagged[port] {
+				cmds = append(cmds, "vlan tagging "+itoa(id))
+			}
+			cmds = append(cmds, "exit")
+		case planned.tagged[port] && !current.tagged[port]:
+			cmds = append(cmds, "interface "+port, "vlan tagging "+itoa(id), "exit")
+		case !planned.tagged[port] && current.tagged[port]:
+			cmds = append(cmds, "interface "+port, "no vlan tagging "+itoa(id), "exit")
+		}
+	}
+
+	for _, port := range current.ports() {
+		if _, kept := planned.member[port]; kept {
+			continue
+		}
+		cmds = append(cmds, "interface "+port, "vlan participation exclude "+itoa(id), "exit")
+	}
+
+	return cmds
 }
 
 func (r *vlanResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {

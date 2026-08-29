@@ -238,8 +238,9 @@ func (p *netgearProvider) Configure(ctx context.Context, req provider.ConfigureR
 		}
 	}
 
-	resp.ResourceData = client
-	resp.DataSourceData = client
+	data := &switchData{client: client, saveConfig: resolved.SaveConfig}
+	resp.ResourceData = data
+	resp.DataSourceData = data
 }
 
 func (p *netgearProvider) Resources(ctx context.Context) []func() resource.Resource {

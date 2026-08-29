@@ -26,7 +26,7 @@ var (
 )
 
 type lagResource struct {
-	client Client
+	data *switchData
 }
 
 type lagResourceModel struct {
@@ -112,7 +112,7 @@ func (r *lagResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 }
 
 func (r *lagResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	r.client = clientFromProviderData(req.ProviderData, &resp.Diagnostics)
+	r.data = switchFromProviderData(req.ProviderData, &resp.Diagnostics)
 }
 
 func (r *lagResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {

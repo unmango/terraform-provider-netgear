@@ -22,7 +22,7 @@ var (
 )
 
 type interfaceResource struct {
-	client Client
+	data *switchData
 }
 
 type interfaceResourceModel struct {
@@ -118,7 +118,7 @@ func (r *interfaceResource) Schema(ctx context.Context, req resource.SchemaReque
 }
 
 func (r *interfaceResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
-	r.client = clientFromProviderData(req.ProviderData, &resp.Diagnostics)
+	r.data = switchFromProviderData(req.ProviderData, &resp.Diagnostics)
 }
 
 func (r *interfaceResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
