@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 )
 
@@ -10,6 +11,10 @@ import (
 type fakeClient struct {
 	// config is what RunningConfig returns.
 	config string
+
+	// output maps a command to the text the switch answers with. Commands absent
+	// from the map produce empty output.
+	output map[string]string
 
 	// runErr is returned by the next Run call, if set.
 	runErr error
@@ -28,7 +33,12 @@ func (c *fakeClient) Run(ctx context.Context, cmds ...string) (string, error) {
 		return "", c.runErr
 	}
 
-	return "", nil
+	var out strings.Builder
+	for _, cmd := range cmds {
+		out.WriteString(c.output[cmd])
+	}
+
+	return out.String(), nil
 }
 
 func (c *fakeClient) RunningConfig(ctx context.Context) (string, error) {

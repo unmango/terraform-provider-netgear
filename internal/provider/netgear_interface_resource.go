@@ -2,9 +2,11 @@ package provider
 
 import (
 	"context"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -14,6 +16,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
+
+// defaultPVID is the VLAN a port falls back to when its pvid is cleared.
+const defaultPVID = 1
 
 var (
 	_ resource.Resource                = &interfaceResource{}
@@ -128,15 +133,48 @@ func (r *interfaceResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
-	// configure
-	// interface <port>
-	// description "<description>"
-	// no shutdown | shutdown
-	// speed <speed> | auto negotiate
-	// vlan pvid <pvid>
-	// mtu <mtu>
-	// Then read admin_status and link_status back from `show interfaces status <port>`.
-	resp.Diagnostics.Append(notImplemented("netgear_interface", "Create")...)
+	if r.data == nil {
+		resp.Diagnostics.Append(errNotConfigured("netgear_interface")...)
+		return
+	}
+
+	port := plan.Port.ValueString()
+
+	cmds := []string{"configure", "interface " + port}
+	if !plan.Description.IsNull() {
+		cmds = append(cmds, "description "+quote(plan.Description.ValueString()))
+	}
+	if plan.Enabled.ValueBool() {
+		cmds = append(cmds, "no shutdown")
+	} else {
+		cmds = append(cmds, "shutdown")
+	}
+	if !plan.Speed.IsNull() {
+		cmds = append(cmds, speedCommand(plan.Speed.ValueString()))
+	}
+	if !plan.PVID.IsNull() {
+		cmds = append(cmds, "vlan pvid "+itoa(plan.PVID.ValueInt64()))
+	}
+	if !plan.MTU.IsNull() {
+		cmds = append(cmds, "mtu "+itoa(plan.MTU.ValueInt64()))
+	}
+	if !plan.FlowControl.IsNull() {
+		cmds = append(cmds, flowControlCommand(plan.FlowControl.ValueBool()))
+	}
+	cmds = append(cmds, "exit", "exit")
+
+	if _, err := r.data.apply(ctx, cmds...); err != nil {
+		resp.Diagnostics.AddError("Unable to Configure the Port", err.Error())
+		return
+	}
+
+	plan.ID = types.StringValue(port)
+	r.applyStatus(ctx, &plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
 func (r *interfaceResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -146,10 +184,38 @@ func (r *interfaceResource) Read(ctx context.Context, req resource.ReadRequest, 
 		return
 	}
 
-	// Parse the `interface <port>` block out of `show running-config` for the
-	// configured attributes, and `show interfaces status <port>` for the computed
-	// ones. A port the switch does not report calls resp.State.RemoveResource(ctx).
-	resp.Diagnostics.Append(notImplemented("netgear_interface", "Read")...)
+	if r.data == nil {
+		resp.Diagnostics.Append(errNotConfigured("netgear_interface")...)
+		return
+	}
+
+	config, err := r.data.runningConfig(ctx)
+	if err != nil {
+		resp.Diagnostics.AddError("Unable to Read the Switch Configuration", err.Error())
+		return
+	}
+
+	port := state.Port.ValueString()
+
+	iface, found := config.Interface(port)
+	if !found {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	state.ID = types.StringValue(port)
+	state.Description = stringOrNull(state.Description, iface.Description)
+	state.Enabled = types.BoolValue(!iface.Shutdown)
+	state.Speed = stringOrNull(state.Speed, iface.Speed)
+	state.PVID = int64OrNull(state.PVID, iface.PVID)
+	state.MTU = int64OrNull(state.MTU, iface.MTU)
+
+	r.applyStatus(ctx, &state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 func (r *interfaceResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -160,9 +226,75 @@ func (r *interfaceResource) Update(ctx context.Context, req resource.UpdateReque
 		return
 	}
 
-	// Emit only the changed settings. An attribute cleared in configuration is
-	// reset with its `no` form, for example `no description`.
-	resp.Diagnostics.Append(notImplemented("netgear_interface", "Update")...)
+	if r.data == nil {
+		resp.Diagnostics.Append(errNotConfigured("netgear_interface")...)
+		return
+	}
+
+	port := plan.Port.ValueString()
+
+	var settings []string
+	if !plan.Description.Equal(state.Description) {
+		if plan.Description.IsNull() {
+			settings = append(settings, "no description")
+		} else {
+			settings = append(settings, "description "+quote(plan.Description.ValueString()))
+		}
+	}
+	if !plan.Enabled.Equal(state.Enabled) {
+		if plan.Enabled.ValueBool() {
+			settings = append(settings, "no shutdown")
+		} else {
+			settings = append(settings, "shutdown")
+		}
+	}
+	if !plan.Speed.Equal(state.Speed) {
+		if plan.Speed.IsNull() {
+			settings = append(settings, "no speed")
+		} else {
+			settings = append(settings, speedCommand(plan.Speed.ValueString()))
+		}
+	}
+	if !plan.PVID.Equal(state.PVID) {
+		// Clearing the pvid returns the port to the default VLAN.
+		pvid := int64(defaultPVID)
+		if !plan.PVID.IsNull() {
+			pvid = plan.PVID.ValueInt64()
+		}
+		settings = append(settings, "vlan pvid "+itoa(pvid))
+	}
+	if !plan.MTU.Equal(state.MTU) {
+		if plan.MTU.IsNull() {
+			settings = append(settings, "no mtu")
+		} else {
+			settings = append(settings, "mtu "+itoa(plan.MTU.ValueInt64()))
+		}
+	}
+	if !plan.FlowControl.Equal(state.FlowControl) {
+		if plan.FlowControl.IsNull() {
+			settings = append(settings, "no flowcontrol")
+		} else {
+			settings = append(settings, flowControlCommand(plan.FlowControl.ValueBool()))
+		}
+	}
+
+	if len(settings) > 0 {
+		cmds := append([]string{"configure", "interface " + port}, settings...)
+		cmds = append(cmds, "exit", "exit")
+
+		if _, err := r.data.apply(ctx, cmds...); err != nil {
+			resp.Diagnostics.AddError("Unable to Update the Port", err.Error())
+			return
+		}
+	}
+
+	plan.ID = types.StringValue(port)
+	r.applyStatus(ctx, &plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
 func (r *interfaceResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -172,12 +304,70 @@ func (r *interfaceResource) Delete(ctx context.Context, req resource.DeleteReque
 		return
 	}
 
-	// The port survives, so reset what was managed:
-	// interface <port>
-	// no description
-	// no shutdown
-	// vlan pvid 1
-	resp.Diagnostics.Append(notImplemented("netgear_interface", "Delete")...)
+	if r.data == nil {
+		resp.Diagnostics.Append(errNotConfigured("netgear_interface")...)
+		return
+	}
+
+	// The port itself survives, so return what was managed to its default.
+	cmds := []string{"configure", "interface " + state.Port.ValueString()}
+	if !state.Description.IsNull() {
+		cmds = append(cmds, "no description")
+	}
+	if !state.Enabled.ValueBool() {
+		cmds = append(cmds, "no shutdown")
+	}
+	if !state.Speed.IsNull() {
+		cmds = append(cmds, "no speed")
+	}
+	if !state.PVID.IsNull() {
+		cmds = append(cmds, "vlan pvid "+itoa(defaultPVID))
+	}
+	if !state.MTU.IsNull() {
+		cmds = append(cmds, "no mtu")
+	}
+	if !state.FlowControl.IsNull() {
+		cmds = append(cmds, "no flowcontrol")
+	}
+	cmds = append(cmds, "exit", "exit")
+
+	if _, err := r.data.apply(ctx, cmds...); err != nil {
+		resp.Diagnostics.AddError("Unable to Reset the Port", err.Error())
+	}
+}
+
+// applyStatus fills the computed attributes from `show interfaces status`. A
+// switch that reports nothing for the port leaves them empty rather than unknown,
+// which the framework rejects.
+func (r *interfaceResource) applyStatus(ctx context.Context, model *interfaceResourceModel, diags *diag.Diagnostics) {
+	status, err := r.data.readStatus(ctx, model.Port.ValueString())
+	if err != nil {
+		diags.AddError("Unable to Read the Port Status", err.Error())
+		return
+	}
+
+	model.AdminStatus = types.StringValue(status.AdminStatus)
+	model.LinkStatus = types.StringValue(status.LinkStatus)
+}
+
+// speedCommand translates a schema speed onto the FASTPATH form, which takes the
+// duplex as a separate word.
+func speedCommand(speed string) string {
+	if speed == "auto" {
+		return "auto negotiate"
+	}
+
+	rate, duplex, _ := strings.Cut(speed, "-")
+
+	return "speed " + rate + " " + duplex
+}
+
+func flowControlCommand(enabled bool) string {
+	if enabled {
+		return "flowcontrol"
+	}
+
+	return "no flowcontrol"
 }
 
 func (r *interfaceResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {

@@ -43,6 +43,16 @@ func stringOrNull(prior types.String, value string) types.String {
 	return types.StringValue(value)
 }
 
+// int64OrNull keeps an attribute null when the switch reports zero for it and the
+// configuration never set it.
+func int64OrNull(prior types.Int64, value int64) types.Int64 {
+	if value == 0 && prior.IsNull() {
+		return prior
+	}
+
+	return types.Int64Value(value)
+}
+
 // quote wraps a value the way the FASTPATH CLI expects free text arguments.
 func quote(value string) string {
 	return `"` + strings.ReplaceAll(value, `"`, "") + `"`

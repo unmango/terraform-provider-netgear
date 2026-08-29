@@ -4,30 +4,12 @@ import (
 	"context"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
-	rschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-go/tftypes"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
-
-func vlanSchema(ctx context.Context) rschema.Schema {
-	GinkgoHelper()
-
-	resp := &resource.SchemaResponse{}
-	(&vlanResource{}).Schema(ctx, resource.SchemaRequest{}, resp)
-
-	Expect(resp.Diagnostics.HasError()).To(BeFalse(), "%v", resp.Diagnostics)
-
-	return resp.Schema
-}
-
-// emptyValue is the null object a fresh plan or state starts from.
-func emptyValue(ctx context.Context, schema rschema.Schema) tftypes.Value {
-	return tftypes.NewValue(schema.Type().TerraformType(ctx), nil)
-}
 
 // withNullSets fills in the element type a zero value set lacks, so a spec can
 // leave membership out of the model it builds.
@@ -43,42 +25,19 @@ func withNullSets(ctx context.Context, model vlanResourceModel) vlanResourceMode
 }
 
 func vlanPlan(ctx context.Context, model vlanResourceModel) tfsdk.Plan {
-	GinkgoHelper()
-
-	model = withNullSets(ctx, model)
-	schema := vlanSchema(ctx)
-	plan := tfsdk.Plan{Schema: schema, Raw: emptyValue(ctx, schema)}
-
-	Expect(plan.Set(ctx, &model).HasError()).To(BeFalse())
-
-	return plan
+	return planFor(ctx, &vlanResource{}, withNullSets(ctx, model))
 }
 
 func vlanState(ctx context.Context, model vlanResourceModel) tfsdk.State {
-	GinkgoHelper()
-
-	model = withNullSets(ctx, model)
-	schema := vlanSchema(ctx)
-	state := tfsdk.State{Schema: schema, Raw: emptyValue(ctx, schema)}
-
-	Expect(state.Set(ctx, &model).HasError()).To(BeFalse())
-
-	return state
+	return stateFor(ctx, &vlanResource{}, withNullSets(ctx, model))
 }
 
 func emptyState(ctx context.Context) tfsdk.State {
-	schema := vlanSchema(ctx)
-	return tfsdk.State{Schema: schema, Raw: emptyValue(ctx, schema)}
+	return blankState(ctx, &vlanResource{})
 }
 
 func readVlanState(ctx context.Context, state tfsdk.State) vlanResourceModel {
-	GinkgoHelper()
-
-	var model vlanResourceModel
-
-	Expect(state.Get(ctx, &model).HasError()).To(BeFalse())
-
-	return model
+	return readState[vlanResourceModel](ctx, state)
 }
 
 var _ = Describe("VlanResource CRUD", func() {
@@ -89,7 +48,7 @@ var _ = Describe("VlanResource CRUD", func() {
 
 	BeforeEach(func() {
 		client = &fakeClient{}
-		r = &vlanResource{data: &switchData{client: client, saveConfig: true}}
+		r = &vlanResource{data: testSwitch(client)}
 	})
 
 	Describe("Create", func() {

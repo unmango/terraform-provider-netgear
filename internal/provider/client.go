@@ -62,6 +62,17 @@ func (d *switchData) runningConfig(ctx context.Context) (*fastpath.RunningConfig
 	return fastpath.ParseRunningConfig(out), nil
 }
 
+// readStatus reports the operational state of one port. The switch is the only
+// source for this, so it costs a command beyond the running config.
+func (d *switchData) readStatus(ctx context.Context, port string) (fastpath.PortStatus, error) {
+	out, err := d.client.Run(ctx, "show interfaces status "+port)
+	if err != nil {
+		return fastpath.PortStatus{}, err
+	}
+
+	return fastpath.ParseInterfaceStatus(out)[port], nil
+}
+
 // switchFromProviderData extracts the configured switch from resource or data
 // source provider data. It returns nil when the framework has not configured the
 // provider yet, which is expected during validation and planning.
