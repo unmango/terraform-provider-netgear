@@ -5,7 +5,7 @@ subcategory: ""
 description: |-
   A link aggregation group.
   FASTPATH moves VLAN configuration from member ports onto the LAG interface, so a port listed in members should not have its VLAN settings managed elsewhere. Reference interface_id from a netgear_vlan to put the LAG in a VLAN.
-  ~> The CLI is undocumented on smart switches. This resource uses the interface lag <id> form with addport and deleteport, and staticcapability for static mode. Firmware that spells these differently rejects the commands with an invalid input error.
+  Groups are not created or destroyed: the switch defines every LAG interface whether or not it is used, so this resource adopts one. Destroying it releases the members and returns the settings to their defaults rather than removing anything.
 ---
 
 # netgear_lag (Resource)
@@ -14,7 +14,7 @@ A link aggregation group.
 
 FASTPATH moves VLAN configuration from member ports onto the LAG interface, so a port listed in `members` should not have its VLAN settings managed elsewhere. Reference `interface_id` from a `netgear_vlan` to put the LAG in a VLAN.
 
-~> The CLI is undocumented on smart switches. This resource uses the `interface lag <id>` form with `addport` and `deleteport`, and `staticcapability` for static mode. Firmware that spells these differently rejects the commands with an invalid input error.
+Groups are not created or destroyed: the switch defines every LAG interface whether or not it is used, so this resource adopts one. Destroying it releases the members and returns the settings to their defaults rather than removing anything.
 
 ## Example Usage
 
@@ -32,14 +32,14 @@ resource "netgear_lag" "uplink" {
 
 ### Required
 
-- `lag_id` (Number) LAG number. The GS724Tv4 supports 1 through 8. Changing this replaces the LAG.
+- `lag_id` (Number) LAG number. The GS724Tv4 defines 1 through 26. Changing this targets a different group, so it replaces the resource.
 - `members` (Set of String) Physical ports in the bundle, in FASTPATH notation such as `0/1`.
 
 ### Optional
 
 - `enabled` (Boolean) Whether the LAG is administratively up.
-- `hash_mode` (Number) FASTPATH load balance selector, chosen from the values the firmware accepts for `hashing-mode`.
-- `mode` (String) `lacp` for 802.3ad negotiation, or `static` for an unconditional bundle.
+- `hash_mode` (Number) Load balance selector, passed to `port-channel load-balance`. Leave unset to keep the switch default.
+- `mode` (String) `lacp` for 802.3ad negotiation, or `static` for an unconditional bundle. The switch's own default is `static`, so a group left at the default `lacp` is recorded as `no port-channel static` in the running config.
 - `name` (String) LAG name.
 
 ### Read-Only

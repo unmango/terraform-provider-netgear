@@ -58,6 +58,7 @@ var _ = Describe("LagResource CRUD", func() {
 				"configure",
 				"interface lag 1",
 				`description "uplink"`,
+				"no port-channel static",
 				"no shutdown",
 				"exit",
 				"interface 0/23",
@@ -70,7 +71,7 @@ var _ = Describe("LagResource CRUD", func() {
 			))
 		})
 
-		It("should declare static capability only in static mode", func(ctx SpecContext) {
+		It("should select static mode and a load balance selector", func(ctx SpecContext) {
 			model := lagOf(2, "0/1")
 			model.Mode = types.StringValue(lagModeStatic)
 			model.HashMode = types.Int64Value(6)
@@ -78,7 +79,7 @@ var _ = Describe("LagResource CRUD", func() {
 
 			r.Create(ctx, resource.CreateRequest{Plan: lagPlan(ctx, model)}, resp)
 
-			Expect(client.sent()).To(ContainElements("staticcapability", "hashing-mode 6"))
+			Expect(client.sent()).To(ContainElements("port-channel static", "port-channel load-balance 6"))
 		})
 
 		It("should expose the interface id other resources reference", func(ctx SpecContext) {
@@ -97,7 +98,6 @@ var _ = Describe("LagResource CRUD", func() {
 		BeforeEach(func() {
 			client.config = `interface lag 1
 description "uplink"
-staticcapability
 exit
 interface 0/23
 addport 3/1
@@ -172,7 +172,7 @@ exit
 				State: lagState(ctx, current),
 			}, resp)
 
-			Expect(client.sent()).To(ContainElements("interface lag 1", "staticcapability"))
+			Expect(client.sent()).To(ContainElements("interface lag 1", "port-channel static"))
 		})
 
 		It("should send nothing when nothing changed", func(ctx SpecContext) {
@@ -192,8 +192,9 @@ exit
 	})
 
 	Describe("Delete", func() {
-		It("should release the members before removing the group", func(ctx SpecContext) {
+		It("should release the members and reset the group", func(ctx SpecContext) {
 			model := lagOf(1, "0/23", "0/24")
+			model.Name = types.StringValue("uplink")
 			model.InterfaceID = types.StringValue("3/1")
 
 			state := lagState(ctx, model)
@@ -210,8 +211,26 @@ exit
 				"interface 0/24",
 				"deleteport 3/1",
 				"exit",
-				"no interface lag 1",
+				"interface lag 1",
+				"no description",
+				"port-channel static",
 				"exit",
+				"exit",
+			))
+		})
+
+		It("should leave a group it never changed alone", func(ctx SpecContext) {
+			model := lagOf(1, "0/23")
+			model.Mode = types.StringValue(lagModeStatic)
+			model.InterfaceID = types.StringValue("3/1")
+
+			state := lagState(ctx, model)
+			resp := &resource.DeleteResponse{State: state}
+
+			r.Delete(ctx, resource.DeleteRequest{State: state}, resp)
+
+			Expect(client.sent()).To(HaveExactElements(
+				"configure", "interface 0/23", "deleteport 3/1", "exit", "exit",
 			))
 		})
 	})

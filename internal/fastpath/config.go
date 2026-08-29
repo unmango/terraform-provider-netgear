@@ -22,7 +22,8 @@ type LAG struct {
 	// InterfaceID is how the rest of the config refers to the group, such as `3/1`.
 	InterfaceID string
 
-	// Mode is `static` when the group declares staticcapability, `lacp` otherwise.
+	// Mode is `lacp` when the group turns off port-channel static, `static`
+	// otherwise, which is the switch's own default.
 	Mode     string
 	HashMode int64
 	Shutdown bool
@@ -174,7 +175,7 @@ func (c *RunningConfig) lag(id int64) *LAG {
 		// FASTPATH numbers LAG interfaces in unit 3 on this hardware. A member port
 		// that names the group differently overrides this during resolution.
 		InterfaceID: "3/" + strconv.FormatInt(id, 10),
-		Mode:        "lacp",
+		Mode:        "static",
 	}
 	c.LAGs[id] = lag
 
@@ -193,12 +194,14 @@ func parseLAGLine(lag *LAG, line string) {
 	switch {
 	case fields[0] == "description":
 		lag.Name = unquote(strings.Join(fields[1:], " "))
-	case line == "staticcapability":
+	case line == "no port-channel static":
+		lag.Mode = "lacp"
+	case line == "port-channel static":
 		lag.Mode = "static"
 	case line == "shutdown":
 		lag.Shutdown = true
-	case fields[0] == "hashing-mode" && len(fields) > 1:
-		if mode, ok := parseID(fields[1]); ok {
+	case strings.HasPrefix(line, "port-channel load-balance ") && len(fields) > 2:
+		if mode, ok := parseID(fields[2]); ok {
 			lag.HashMode = mode
 		}
 	}

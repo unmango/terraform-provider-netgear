@@ -114,3 +114,19 @@ The config writes `vlan participation auto 1` for the default VLAN.
 Only `include` counts as membership, so an `auto` line is deliberately ignored.
 
 LAG interfaces exist whether or not they are configured: `show port all` lists `lag 1` through `lag 26`, and `show port-channel all` gives each a default name of `ch1` and up.
+`no interface lag 1` is rejected for the same reason a port cannot be deleted, so removing a group means releasing its members and returning its settings to their defaults.
+
+Neither `staticcapability` nor `hashing-mode` exists here. The working commands, both in `interface lag <id>` context, are:
+
+| Setting | Command |
+| --- | --- |
+| Unconditional bundle | `port-channel static` |
+| LACP negotiation | `no port-channel static` |
+| Load balance selector | `port-channel load-balance <n>` |
+
+Static is the switch's default, so it is never written to the running config; `no port-channel static` is what appears when a group negotiates.
+`show port-channel all` shows the effect in its Type column, `Stat` against `Dyn.`.
+`port-channel load-balance <n> all` applies the selector to every group at once, and `no port-channel load-balance all` clears it.
+
+Membership is written from the member port's own context, and the config records it in the short form: `addport lag 1` under `interface g13`.
+The slot form, `addport 3/1`, is accepted and stored the same way.

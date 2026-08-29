@@ -59,9 +59,9 @@ func (r *lagResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 			"FASTPATH moves VLAN configuration from member ports onto the LAG interface, so a port " +
 			"listed in `members` should not have its VLAN settings managed elsewhere. Reference " +
 			"`interface_id` from a `netgear_vlan` to put the LAG in a VLAN.\n\n" +
-			"~> The CLI is undocumented on smart switches. This resource uses the `interface lag <id>` " +
-			"form with `addport` and `deleteport`, and `staticcapability` for static mode. Firmware " +
-			"that spells these differently rejects the commands with an invalid input error.",
+			"Groups are not created or destroyed: the switch defines every LAG interface whether " +
+			"or not it is used, so this resource adopts one. Destroying it releases the members and " +
+			"returns the settings to their defaults rather than removing anything.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				MarkdownDescription: "The LAG id as a string. Used as the import id.",
@@ -71,10 +71,10 @@ func (r *lagResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 				},
 			},
 			"lag_id": schema.Int64Attribute{
-				MarkdownDescription: "LAG number. The GS724Tv4 supports 1 through 8. Changing this replaces the LAG.",
+				MarkdownDescription: "LAG number. The GS724Tv4 defines 1 through 26. Changing this targets a different group, so it replaces the resource.",
 				Required:            true,
 				Validators: []validator.Int64{
-					int64validator.Between(1, 8),
+					int64validator.Between(1, 26),
 				},
 				PlanModifiers: []planmodifier.Int64{
 					int64planmodifier.RequiresReplace(),
@@ -85,10 +85,12 @@ func (r *lagResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 				Optional:            true,
 			},
 			"mode": schema.StringAttribute{
-				MarkdownDescription: "`lacp` for 802.3ad negotiation, or `static` for an unconditional bundle.",
-				Optional:            true,
-				Computed:            true,
-				Default:             stringdefault.StaticString(lagModeLACP),
+				MarkdownDescription: "`lacp` for 802.3ad negotiation, or `static` for an unconditional bundle. " +
+					"The switch's own default is `static`, so a group left at the default `lacp` is recorded " +
+					"as `no port-channel static` in the running config.",
+				Optional: true,
+				Computed: true,
+				Default:  stringdefault.StaticString(lagModeLACP),
 				Validators: []validator.String{
 					stringvalidator.OneOf(lagModeLACP, lagModeStatic),
 				},
@@ -102,7 +104,7 @@ func (r *lagResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 				},
 			},
 			"hash_mode": schema.Int64Attribute{
-				MarkdownDescription: "FASTPATH load balance selector, chosen from the values the firmware accepts for `hashing-mode`.",
+				MarkdownDescription: "Load balance selector, passed to `port-channel load-balance`. Leave unset to keep the switch default.",
 				Optional:            true,
 			},
 			"enabled": schema.BoolAttribute{
@@ -147,11 +149,9 @@ func (r *lagResource) Create(ctx context.Context, req resource.CreateRequest, re
 	if !plan.Name.IsNull() {
 		cmds = append(cmds, "description "+quote(plan.Name.ValueString()))
 	}
-	if plan.Mode.ValueString() == lagModeStatic {
-		cmds = append(cmds, "staticcapability")
-	}
+	cmds = append(cmds, modeCommand(plan.Mode.ValueString()))
 	if !plan.HashMode.IsNull() {
-		cmds = append(cmds, "hashing-mode "+itoa(plan.HashMode.ValueInt64()))
+		cmds = append(cmds, "port-channel load-balance "+itoa(plan.HashMode.ValueInt64()))
 	}
 	if plan.Enabled.ValueBool() {
 		cmds = append(cmds, "no shutdown")
@@ -248,17 +248,13 @@ func (r *lagResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		}
 	}
 	if !plan.Mode.Equal(state.Mode) {
-		if plan.Mode.ValueString() == lagModeStatic {
-			settings = append(settings, "staticcapability")
-		} else {
-			settings = append(settings, "no staticcapability")
-		}
+		settings = append(settings, modeCommand(plan.Mode.ValueString()))
 	}
 	if !plan.HashMode.Equal(state.HashMode) {
 		if plan.HashMode.IsNull() {
-			settings = append(settings, "no hashing-mode")
+			settings = append(settings, "no port-channel load-balance")
 		} else {
-			settings = append(settings, "hashing-mode "+itoa(plan.HashMode.ValueInt64()))
+			settings = append(settings, "port-channel load-balance "+itoa(plan.HashMode.ValueInt64()))
 		}
 	}
 	if !plan.Enabled.Equal(state.Enabled) {
@@ -328,15 +324,48 @@ func (r *lagResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 		interfaceID = lagInterfaceID(id)
 	}
 
+	// The group itself cannot be removed: the switch defines every LAG interface
+	// whether or not it is used. Releasing the members and returning the settings
+	// to their defaults is what removes it from the running config.
 	cmds := []string{"configure"}
 	for _, port := range sortedKeys(members) {
 		cmds = append(cmds, "interface "+port, "deleteport "+interfaceID, "exit")
 	}
-	cmds = append(cmds, "no interface lag "+itoa(id), "exit")
+
+	var reset []string
+	if !state.Name.IsNull() {
+		reset = append(reset, "no description")
+	}
+	if state.Mode.ValueString() != lagModeStatic {
+		reset = append(reset, modeCommand(lagModeStatic))
+	}
+	if !state.HashMode.IsNull() {
+		reset = append(reset, "no port-channel load-balance")
+	}
+	if !state.Enabled.ValueBool() {
+		reset = append(reset, "no shutdown")
+	}
+
+	if len(reset) > 0 {
+		cmds = append(cmds, "interface lag "+itoa(id))
+		cmds = append(cmds, reset...)
+		cmds = append(cmds, "exit")
+	}
+	cmds = append(cmds, "exit")
 
 	if _, err := r.data.apply(ctx, cmds...); err != nil {
-		resp.Diagnostics.AddError("Unable to Delete the LAG", err.Error())
+		resp.Diagnostics.AddError("Unable to Reset the LAG", err.Error())
 	}
+}
+
+// modeCommand selects between an unconditional bundle and LACP negotiation.
+// Static is the switch's own default, so LACP is the setting it records.
+func modeCommand(mode string) string {
+	if mode == lagModeStatic {
+		return "port-channel static"
+	}
+
+	return "no port-channel static"
 }
 
 // lagInterfaceID is the interface id FASTPATH gives a group, which other commands

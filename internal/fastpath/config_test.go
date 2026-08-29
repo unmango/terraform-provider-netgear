@@ -107,8 +107,7 @@ var _ = Describe("ParseRunningConfig", func() {
 	Describe("link aggregation", func() {
 		const lagConfig = `interface lag 1
 description "uplink"
-staticcapability
-hashing-mode 6
+port-channel load-balance 6
 exit
 interface 0/23
 addport 3/1
@@ -131,10 +130,18 @@ exit
 			Expect(lag.InterfaceID).To(Equal("3/1"))
 		})
 
-		It("should default to lacp without staticcapability", func() {
+		It("should default to static, which is the switch's own default", func() {
 			config := fastpath.ParseRunningConfig("interface lag 2\nexit\n")
 
 			lag, _ := config.LAG(2)
+
+			Expect(lag.Mode).To(Equal("static"))
+		})
+
+		It("should read lacp off the line the switch records for it", func() {
+			config := fastpath.ParseRunningConfig("interface lag 3\nno port-channel static\nexit\n")
+
+			lag, _ := config.LAG(3)
 
 			Expect(lag.Mode).To(Equal("lacp"))
 		})
