@@ -15,6 +15,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+
+	"github.com/UnstoppableMango/terraform-provider-netgear/internal/fastpath"
 )
 
 var _ provider.Provider = &netgearProvider{}
@@ -55,10 +57,18 @@ type clientConfig struct {
 }
 
 // newClient constructs the FASTPATH CLI client. It is a variable so tests can
-// substitute a fake. It is nil until the telnet client lands, in which case
-// Configure leaves the provider data unset and every resource reports that the
-// provider is not configured.
-var newClient func(context.Context, clientConfig) (Client, error)
+// substitute a fake.
+var newClient = func(ctx context.Context, cfg clientConfig) (Client, error) {
+	return fastpath.New(fastpath.Config{
+		Host:           cfg.Host,
+		Port:           cfg.Port,
+		Username:       cfg.Username,
+		Password:       cfg.Password,
+		EnablePassword: cfg.EnablePassword,
+		Flow:           fastpath.Flow(cfg.CLIFlow),
+		Timeout:        cfg.Timeout,
+	})
+}
 
 func New(version string) func() provider.Provider {
 	return func() provider.Provider {
@@ -208,22 +218,24 @@ func (p *netgearProvider) Configure(ctx context.Context, req provider.ConfigureR
 		return
 	}
 
-	if newClient == nil {
-		// The FASTPATH client is not implemented yet. Leaving the provider data
-		// unset keeps configuration validation useful while every resource reports
-		// that it has no client to work with.
+	client, err := newClient(ctx, resolved)
+	if err != nil {
+		resp.Diagnostics.AddError("Unable to Configure the Switch Client", err.Error())
 		return
 	}
 
-	client, err := newClient(ctx, resolved)
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unable to Connect to the Switch",
-			"Connecting to "+resolved.Host+" on port "+strconv.FormatInt(resolved.Port, 10)+" failed: "+err.Error()+"\n\n"+
-				"If the connection was refused while the switch still answers ICMP, the CLI is disabled. "+
-				"Enable it in the web UI under Maintenance > Troubleshooting > Remote Diagnostics.",
-		)
-		return
+	// Log in once up front so an unreachable switch, a disabled CLI, or wrong
+	// credentials are reported here rather than from the first resource.
+	if p, ok := client.(prober); ok {
+		if err := p.Probe(ctx); err != nil {
+			resp.Diagnostics.AddError(
+				"Unable to Reach the Switch CLI",
+				"Connecting to "+resolved.Host+" on port "+strconv.FormatInt(resolved.Port, 10)+" failed: "+err.Error()+"\n\n"+
+					"If the connection was refused while the switch still answers ICMP, the CLI is disabled. "+
+					"Enable it in the web UI under Maintenance > Troubleshooting > Remote Diagnostics.",
+			)
+			return
+		}
 	}
 
 	resp.ResourceData = client

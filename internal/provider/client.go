@@ -21,6 +21,12 @@ type Client interface {
 	Save(ctx context.Context) error
 }
 
+// prober is the optional half of Client that checks the switch is reachable and
+// the credentials work, used once during provider configuration.
+type prober interface {
+	Probe(ctx context.Context) error
+}
+
 // clientFromProviderData extracts the configured Client from resource or data source
 // provider data. It returns nil when the framework has not configured the provider yet,
 // which is expected during validation and planning.
