@@ -91,6 +91,25 @@ A rejected command answers in one of two ways, both of which the client treats a
 An invalid interface range has been used for this function.
 ```
 
+The VLAN database is a privileged mode context, not part of `configure`.
+`show running-config` reflects this: the `vlan database` block is printed before the `configure` line, not inside it.
+Entering it from config mode makes `vlan 4090` read as a different command entirely, which answers `Incorrect input! Use 'vlan  <vlan-range | all>'`.
+Port membership is the opposite: `vlan participation` and `vlan tagging` are interface commands and do need `configure`.
+
+VLAN names accept quotes, so `vlan name 4090 "tf test"` works and a name may contain spaces.
+
+Saving is `copy system:running-config nvram:startup-config`.
+Plain `copy running-config startup-config` is rejected.
+It asks `Are you sure you want to save? (y/n)` and warns that management interfaces are unavailable while it runs, so the read deadline for this one command is far longer than for any other.
+
+Rejected commands do not always mark a column with `%`. The VLAN commands answer with a failure table instead:
+
+```
+Incorrect input! Use 'vlan  <vlan-range | all>'.
+   VLANs failed to be configured : 1
+   4090      This VLAN does not exist.
+```
+
 The config writes `vlan participation auto 1` for the default VLAN.
 Only `include` counts as membership, so an `auto` line is deliberately ignored.
 

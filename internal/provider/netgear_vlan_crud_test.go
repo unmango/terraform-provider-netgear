@@ -66,11 +66,11 @@ var _ = Describe("VlanResource CRUD", func() {
 
 			Expect(resp.Diagnostics.HasError()).To(BeFalse(), "%v", resp.Diagnostics)
 			Expect(client.sent()).To(HaveExactElements(
-				"configure",
 				"vlan database",
 				"vlan 10",
 				`vlan name 10 "mgmt"`,
 				"exit",
+				"configure",
 				"interface 0/1",
 				"vlan participation include 10",
 				"exit",
@@ -288,7 +288,7 @@ exit
 
 			Expect(resp.Diagnostics.HasError()).To(BeFalse(), "%v", resp.Diagnostics)
 			Expect(client.sent()).To(HaveExactElements(
-				"configure", "vlan database", "no vlan 10", "exit", "exit",
+				"vlan database", "no vlan 10", "exit",
 			))
 		})
 

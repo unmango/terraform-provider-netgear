@@ -10,6 +10,9 @@ import (
 	"github.com/UnstoppableMango/terraform-provider-netgear/internal/fastpath"
 )
 
+// saveCommand is the NVRAM write as a GS724Tv4 spells it.
+const saveCommand = "copy system:running-config nvram:startup-config"
+
 // fakeSwitch is a scripted stand in for a FASTPATH CLI. It speaks whichever
 // login flow it is configured for and answers commands from a lookup table.
 type fakeSwitch struct {
@@ -181,7 +184,7 @@ func (f *fakeSwitch) serve(conn net.Conn) {
 			if !write(f.prompt(true)) {
 				return
 			}
-		case line == "copy running-config startup-config" && f.confirmSave:
+		case line == saveCommand && f.confirmSave:
 			f.record(line)
 			if !write("\r\nAre you sure you want to save? (y/n)") {
 				return

@@ -146,7 +146,8 @@ func (r *vlanResource) Create(ctx context.Context, req resource.CreateRequest, r
 
 	id := plan.VlanID.ValueInt64()
 
-	cmds := []string{"configure", "vlan database", "vlan " + itoa(id)}
+	// The VLAN database is a privileged mode context, not part of configure.
+	cmds := []string{"vlan database", "vlan " + itoa(id)}
 	if !plan.Name.IsNull() {
 		cmds = append(cmds, "vlan name "+itoa(id)+" "+quote(plan.Name.ValueString()))
 	}
@@ -155,14 +156,17 @@ func (r *vlanResource) Create(ctx context.Context, req resource.CreateRequest, r
 	}
 	cmds = append(cmds, "exit")
 
-	for _, port := range members.ports() {
-		cmds = append(cmds, "interface "+port, "vlan participation include "+itoa(id))
-		if members.tagged[port] {
-			cmds = append(cmds, "vlan tagging "+itoa(id))
+	if len(members.member) > 0 {
+		cmds = append(cmds, "configure")
+		for _, port := range members.ports() {
+			cmds = append(cmds, "interface "+port, "vlan participation include "+itoa(id))
+			if members.tagged[port] {
+				cmds = append(cmds, "vlan tagging "+itoa(id))
+			}
+			cmds = append(cmds, "exit")
 		}
 		cmds = append(cmds, "exit")
 	}
-	cmds = append(cmds, "exit")
 
 	if _, err := r.data.apply(ctx, cmds...); err != nil {
 		resp.Diagnostics.AddError("Unable to Create the VLAN", err.Error())
@@ -231,33 +235,38 @@ func (r *vlanResource) Update(ctx context.Context, req resource.UpdateRequest, r
 
 	id := plan.VlanID.ValueInt64()
 
-	var cmds []string
+	// Database settings and port membership live in different modes, so they are
+	// gathered separately and each block is only entered when it has work.
+	var database []string
 	if !plan.Name.Equal(state.Name) {
-		cmds = append(cmds, "vlan database")
 		if plan.Name.IsNull() {
-			cmds = append(cmds, "no vlan name "+itoa(id))
+			database = append(database, "no vlan name "+itoa(id))
 		} else {
-			cmds = append(cmds, "vlan name "+itoa(id)+" "+quote(plan.Name.ValueString()))
+			database = append(database, "vlan name "+itoa(id)+" "+quote(plan.Name.ValueString()))
 		}
-		cmds = append(cmds, "exit")
 	}
-
 	if !plan.Routing.Equal(state.Routing) {
-		cmds = append(cmds, "vlan database")
 		if plan.Routing.ValueBool() {
-			cmds = append(cmds, "vlan routing "+itoa(id))
+			database = append(database, "vlan routing "+itoa(id))
 		} else {
-			cmds = append(cmds, "no vlan routing "+itoa(id))
+			database = append(database, "no vlan routing "+itoa(id))
 		}
+	}
+
+	var cmds []string
+	if len(database) > 0 {
+		cmds = append(cmds, "vlan database")
+		cmds = append(cmds, database...)
 		cmds = append(cmds, "exit")
 	}
 
-	cmds = append(cmds, membershipCommands(id, current, planned)...)
+	if membership := membershipCommands(id, current, planned); len(membership) > 0 {
+		cmds = append(cmds, "configure")
+		cmds = append(cmds, membership...)
+		cmds = append(cmds, "exit")
+	}
 
 	if len(cmds) > 0 {
-		cmds = append([]string{"configure"}, cmds...)
-		cmds = append(cmds, "exit")
-
 		if _, err := r.data.apply(ctx, cmds...); err != nil {
 			resp.Diagnostics.AddError("Unable to Update the VLAN", err.Error())
 			return
@@ -292,10 +301,8 @@ func (r *vlanResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 	id := state.VlanID.ValueInt64()
 
 	if _, err := r.data.apply(ctx,
-		"configure",
 		"vlan database",
 		"no vlan "+itoa(id),
-		"exit",
 		"exit",
 	); err != nil {
 		resp.Diagnostics.AddError("Unable to Delete the VLAN", err.Error())

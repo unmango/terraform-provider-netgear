@@ -112,7 +112,7 @@ var _ = Describe("Client", func() {
 			err := client.Save(ctx)
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(sw.received()).To(ContainElement("copy running-config startup-config"))
+			Expect(sw.received()).To(ContainElement(saveCommand))
 		})
 
 		It("should answer the save confirmation prompt", func(ctx SpecContext) {

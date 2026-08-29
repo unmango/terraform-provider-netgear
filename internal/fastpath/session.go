@@ -37,8 +37,17 @@ var (
 	moreRe    = regexp.MustCompile(`--More--[^\r\n]*$`)
 	confirmRe = regexp.MustCompile(`(?i)\(y/n\)[^\r\n]*$`)
 
-	// cliErrorRe matches the ways FASTPATH reports a rejected command.
-	cliErrorRe = regexp.MustCompile(`(?im)^\s*(%.*|ERROR:.*|Command not found.*|An invalid .*)$`)
+	// cliErrorRe matches the ways FASTPATH reports a rejected command. The forms
+	// differ by command: a syntax error marks the offending column with `%`, while
+	// the VLAN commands answer with a failure table instead.
+	cliErrorRe = regexp.MustCompile(
+		`(?im)^\s*(%.*` +
+			`|ERROR:.*` +
+			`|Command not found.*` +
+			`|An invalid .*` +
+			`|Incorrect input.*` +
+			`|.*failed to be configured.*)$`,
+	)
 )
 
 // ErrNoMatch reports that the switch sent something none of the expected prompts
@@ -57,6 +66,10 @@ type session struct {
 	// lastMatch is the prompt text the most recent read stopped at, which is what
 	// tells user mode and privileged mode apart.
 	lastMatch string
+
+	// timeout bounds a single read. It is raised while saving, which takes far
+	// longer than any other command.
+	timeout time.Duration
 }
 
 const (
@@ -69,9 +82,10 @@ const (
 
 func newSession(conn net.Conn, cfg Config) *session {
 	return &session{
-		conn: conn,
-		cfg:  cfg,
-		raw:  make([]byte, 4096),
+		conn:    conn,
+		cfg:     cfg,
+		raw:     make([]byte, 4096),
+		timeout: cfg.Timeout,
 	}
 }
 
@@ -197,10 +211,18 @@ func (s *session) exec(ctx context.Context, cmd string) (string, error) {
 	return result, nil
 }
 
+// saveTimeoutFactor stretches the read deadline while NVRAM is written. The
+// switch warns the operation may take minutes and stops answering during it.
+const saveTimeoutFactor = 10
+
 // save writes the running configuration to NVRAM, answering the confirmation
-// prompt that some firmware asks first.
+// prompt the switch asks first.
 func (s *session) save(ctx context.Context) error {
-	if err := s.send(ctx, "copy running-config startup-config"); err != nil {
+	restore := s.timeout
+	s.timeout = s.timeout * saveTimeoutFactor
+	defer func() { s.timeout = restore }()
+
+	if err := s.send(ctx, "copy system:running-config nvram:startup-config"); err != nil {
 		return err
 	}
 
@@ -257,7 +279,7 @@ func (s *session) readUntil(ctx context.Context, exps ...*regexp.Regexp) (string
 			text := string(s.buf)
 			s.buf = nil
 			if errors.Is(err, context.DeadlineExceeded) || isTimeout(err) {
-				return text, -1, fmt.Errorf("%w after %s", ErrNoMatch, s.cfg.Timeout)
+				return text, -1, fmt.Errorf("%w after %s", ErrNoMatch, s.timeout)
 			}
 			return text, -1, err
 		}
@@ -337,7 +359,7 @@ func (s *session) process(ctx context.Context, chunk []byte) error {
 }
 
 func (s *session) deadline(ctx context.Context) time.Time {
-	deadline := time.Now().Add(s.cfg.Timeout)
+	deadline := time.Now().Add(s.timeout)
 	if ctxDeadline, ok := ctx.Deadline(); ok && ctxDeadline.Before(deadline) {
 		return ctxDeadline
 	}
