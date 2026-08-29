@@ -32,4 +32,35 @@ var _ = Describe("Provider", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(server).NotTo(BeNil())
 	})
+
+	It("should describe the CLI connection", func(ctx SpecContext) {
+		p := provider.New("test")()
+		resp := &tfprovider.SchemaResponse{}
+
+		p.Schema(ctx, tfprovider.SchemaRequest{}, resp)
+
+		Expect(resp.Diagnostics.HasError()).To(BeFalse())
+		Expect(resp.Schema.Attributes).To(HaveKey("host"))
+		Expect(resp.Schema.Attributes).To(HaveKey("port"))
+		Expect(resp.Schema.Attributes).To(HaveKey("cli_flow"))
+		Expect(resp.Schema.Attributes).To(HaveKey("save_config"))
+	})
+
+	It("should mark credentials sensitive", func(ctx SpecContext) {
+		p := provider.New("test")()
+		resp := &tfprovider.SchemaResponse{}
+
+		p.Schema(ctx, tfprovider.SchemaRequest{}, resp)
+
+		Expect(resp.Schema.Attributes["password"].IsSensitive()).To(BeTrue())
+		Expect(resp.Schema.Attributes["enable_password"].IsSensitive()).To(BeTrue())
+	})
+
+	It("should register the switch resources", func(ctx SpecContext) {
+		p := provider.New("test")()
+
+		resources := p.Resources(ctx)
+
+		Expect(resources).To(HaveLen(3))
+	})
 })

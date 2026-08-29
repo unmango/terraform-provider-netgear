@@ -1,7 +1,7 @@
 # NETGEAR management interfaces
 
-Research notes on how NETGEAR hardware can be driven programmatically, gathered while scoping this provider.
-The short version: NETGEAR ships no official API, no vendor Terraform provider, and no vendor Ansible collection, so every option below is either an undocumented interface or a community tool.
+Reference notes on how NETGEAR hardware can be driven programmatically.
+NETGEAR ships no official API, no vendor Terraform provider, and no vendor Ansible collection, so every option below is either an undocumented interface or a community tool.
 
 ## Management surfaces
 
@@ -62,4 +62,4 @@ For hardware where the CLI is unavailable, the realistic fallbacks are SNMP for 
 ## Reference hardware
 
 `GS724Tv4`, 24 gigabit copper ports plus 2 dedicated SFP ports, no serial console port.
-Confirmed to run the newer-style FASTPATH login flow.
+It runs the newer-style FASTPATH login flow.

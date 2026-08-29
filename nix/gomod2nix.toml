@@ -45,6 +45,10 @@ schema = 3
     version = 'v1.19.0'
     hash = 'sha256-os722pxjHo7N+a/X2RO5yvFhVC09t3CpDoEUWmN9Ojw='
 
+  [mod.'github.com/hashicorp/terraform-plugin-framework-validators']
+    version = 'v0.19.0'
+    hash = 'sha256-gnfHyG24S5qIbckeYaVeTDMShwojCnH8SnLB0fhKmR4='
+
   [mod.'github.com/hashicorp/terraform-plugin-go']
     version = 'v0.31.0'
     hash = 'sha256-nEi/SrSC2oQE6IeLAf61m6AYZefwbHQY6/yZ287Zeyk='
