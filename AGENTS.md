@@ -33,4 +33,9 @@ The project is nix first: the flake builds the provider with gomod2nix and provi
 
 ## Current state
 
-Skeleton only: empty provider schema, no resources or data sources.
+`internal/fastpath` speaks the FASTPATH CLI over telnet: login flow detection, telnet option refusal, prompt matching, CLI error detection, NVRAM save, and parsers for `show running-config` and `show port`.
+`netgear_vlan`, `netgear_interface`, and `netgear_lag` are implemented against it. There are no data sources.
+
+Ports are named two ways by the firmware, `g7` and `0/7`. Everything read off the switch is normalized to the slot form by `fastpath.NormalizePort`; see `docs/management-interfaces.md` for what has been verified on hardware.
+
+Resource CRUD is covered by specs that assert the exact command list sent to the switch, using the `fakeClient` in `internal/provider/fake_client_test.go` and the helpers in `crud_helpers_test.go`.

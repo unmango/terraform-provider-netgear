@@ -63,3 +63,35 @@ For hardware where the CLI is unavailable, the realistic fallbacks are SNMP for 
 
 `GS724Tv4`, 24 gigabit copper ports plus 2 dedicated SFP ports, no serial console port.
 It runs the newer-style FASTPATH login flow.
+
+## Verified against the reference hardware
+
+Confirmed on a `GS724Tv4` running firmware `6.3.1.19`, boot `B1.0.0.4`.
+
+Two spellings name the same port, and commands accept either:
+
+| Surface | Physical port | LAG |
+| --- | --- | --- |
+| `show running-config`, `show port` | `g7` | `lag 1` |
+| `show interfaces status` | `0/7` | `3/1` |
+
+The provider normalizes everything it reads to the slot form, so `g7` becomes `0/7` and `lag 1` becomes `3/1`.
+`show interfaces status g7` echoes `0/7`, which is how the two are known to be the same port.
+
+Port status needs `show port`, not `show interfaces status`.
+Only `show port` carries an Admin Mode column; `show interfaces status` reports the link state alone.
+
+Config and interface modes nest the prompt: `(GS724Tv4) (Config)#`, then `(GS724Tv4) (Interface 0/7)#`.
+Prompt matching has to consume every parenthesized group or the outer name leaks into command output.
+
+A rejected command answers in one of two ways, both of which the client treats as an error:
+
+```
+% Invalid input detected at '^' marker.
+An invalid interface range has been used for this function.
+```
+
+The config writes `vlan participation auto 1` for the default VLAN.
+Only `include` counts as membership, so an `auto` line is deliberately ignored.
+
+LAG interfaces exist whether or not they are configured: `show port all` lists `lag 1` through `lag 26`, and `show port-channel all` gives each a default name of `ch1` and up.

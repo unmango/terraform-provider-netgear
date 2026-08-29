@@ -65,7 +65,7 @@ var _ = Describe("InterfaceResource CRUD", func() {
 				"mtu 9216",
 				"exit",
 				"exit",
-				"show interfaces status 0/1",
+				"show port 0/1",
 			))
 		})
 
@@ -92,7 +92,7 @@ var _ = Describe("InterfaceResource CRUD", func() {
 
 		It("should fill the computed status from the switch", func(ctx SpecContext) {
 			client.output = map[string]string{
-				"show interfaces status 0/1": "0/1  Enable  Up  Auto  1000 Full  Copper",
+				"show port 0/1": "g1  Enable  Auto  1000 Full  Up  Enable  Enable  Disable",
 			}
 			resp := &resource.CreateResponse{State: blankState(ctx, r)}
 
@@ -128,7 +128,7 @@ shutdown
 exit
 `
 			client.output = map[string]string{
-				"show interfaces status 0/1": "0/1  Enable  Down  Auto",
+				"show port 0/1": "g1  Enable  Auto  Down  Enable  Enable  Disable",
 			}
 		})
 
@@ -201,7 +201,7 @@ exit
 				`description "new"`,
 				"exit",
 				"exit",
-				"show interfaces status 0/1",
+				"show port 0/1",
 			))
 		})
 
@@ -247,7 +247,7 @@ exit
 				State: ifaceState(ctx, model),
 			}, resp)
 
-			Expect(client.sent()).To(HaveExactElements("show interfaces status 0/1"))
+			Expect(client.sent()).To(HaveExactElements("show port 0/1"))
 			Expect(client.saveCount()).To(BeZero())
 		})
 	})

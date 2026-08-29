@@ -62,15 +62,15 @@ func (d *switchData) runningConfig(ctx context.Context) (*fastpath.RunningConfig
 	return fastpath.ParseRunningConfig(out), nil
 }
 
-// readStatus reports the operational state of one port. The switch is the only
-// source for this, so it costs a command beyond the running config.
+// readStatus reports the operational state of one port. `show port` is the source
+// rather than `show interfaces status`, because only it carries the admin mode.
 func (d *switchData) readStatus(ctx context.Context, port string) (fastpath.PortStatus, error) {
-	out, err := d.client.Run(ctx, "show interfaces status "+port)
+	out, err := d.client.Run(ctx, "show port "+port)
 	if err != nil {
 		return fastpath.PortStatus{}, err
 	}
 
-	return fastpath.ParseInterfaceStatus(out)[port], nil
+	return fastpath.ParsePortStatus(out)[fastpath.NormalizePort(port)], nil
 }
 
 // switchFromProviderData extracts the configured switch from resource or data

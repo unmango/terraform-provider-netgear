@@ -25,10 +25,12 @@ var (
 	// promptRe matches both the model prompt used by newer firmware, for example
 	// "(GS724Tv4) #", and the generic "(Broadcom FASTPATH Switching) #" of older
 	// firmware, in either user (>) or privileged (#) mode.
-	promptRe = regexp.MustCompile(`\(([^)\r\n]*)\)\s*([#>])\s*$`)
+	// Config and interface modes nest another parenthesized name onto the prompt,
+	// for example "(GS724Tv4) (Interface 0/7)#", so every group is consumed.
+	promptRe = regexp.MustCompile(`\((?:[^)\r\n]*)\)(?:\s*\([^)\r\n]*\))*\s*([#>])\s*$`)
 
 	// enabledPromptRe is promptRe restricted to privileged mode.
-	enabledPromptRe = regexp.MustCompile(`\([^)\r\n]*\)\s*#\s*$`)
+	enabledPromptRe = regexp.MustCompile(`\([^)\r\n]*\)(?:\s*\([^)\r\n]*\))*\s*#\s*$`)
 
 	userRe    = regexp.MustCompile(`(?i)(?:user|username|login)\s*:\s*$`)
 	passRe    = regexp.MustCompile(`(?i)password\s*:\s*$`)

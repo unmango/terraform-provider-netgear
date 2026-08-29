@@ -107,7 +107,8 @@ func ParseRunningConfig(config string) *RunningConfig {
 		}
 
 		if port, ok := strings.CutPrefix(line, "interface "); ok {
-			port = strings.TrimSpace(port)
+			// The config prints the short spelling, `interface g7`.
+			port = NormalizePort(port)
 			inDatabase = false
 			currentLAG = nil
 			current = parsed.iface(port)
@@ -254,7 +255,7 @@ func (c *RunningConfig) parseInterfaceLine(iface *Interface, line string) {
 	case strings.HasPrefix(line, "vlan tagging ") && len(fields) > 2:
 		iface.Tagging = append(iface.Tagging, parseIDList(fields[2])...)
 	case fields[0] == "addport" && len(fields) > 1:
-		iface.LAG = fields[1]
+		iface.LAG = NormalizePort(strings.Join(fields[1:], " "))
 	}
 }
 
