@@ -104,6 +104,54 @@ var _ = Describe("ParseRunningConfig", func() {
 		Expect(config.VLANs).To(HaveKey(int64(11)))
 	})
 
+	Describe("link aggregation", func() {
+		const lagConfig = `interface lag 1
+description "uplink"
+staticcapability
+hashing-mode 6
+exit
+interface 0/23
+addport 3/1
+exit
+interface 0/24
+addport 3/1
+exit
+`
+
+		It("should read the group and its members", func() {
+			config := fastpath.ParseRunningConfig(lagConfig)
+
+			lag, ok := config.LAG(1)
+
+			Expect(ok).To(BeTrue())
+			Expect(lag.Name).To(Equal("uplink"))
+			Expect(lag.Mode).To(Equal("static"))
+			Expect(lag.HashMode).To(BeEquivalentTo(6))
+			Expect(lag.Members).To(HaveExactElements("0/23", "0/24"))
+			Expect(lag.InterfaceID).To(Equal("3/1"))
+		})
+
+		It("should default to lacp without staticcapability", func() {
+			config := fastpath.ParseRunningConfig("interface lag 2\nexit\n")
+
+			lag, _ := config.LAG(2)
+
+			Expect(lag.Mode).To(Equal("lacp"))
+		})
+
+		It("should not confuse a lag block with a port", func() {
+			config := fastpath.ParseRunningConfig(lagConfig)
+
+			Expect(config.Interfaces).NotTo(HaveKey("lag 1"))
+		})
+
+		It("should report a group the switch does not have", func() {
+			_, ok := fastpath.ParseRunningConfig(lagConfig).LAG(8)
+
+			Expect(ok).To(BeFalse())
+		})
+	})
+
 	It("should ignore an empty config", func() {
 		config := fastpath.ParseRunningConfig("")
 

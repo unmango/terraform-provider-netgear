@@ -1,6 +1,7 @@
 package fastpath
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -9,6 +10,23 @@ import (
 type RunningConfig struct {
 	VLANs      map[int64]*VLAN
 	Interfaces map[string]*Interface
+	LAGs       map[int64]*LAG
+}
+
+// LAG is a link aggregation group, with the members gathered from the interface
+// blocks whose ports were added to it.
+type LAG struct {
+	ID   int64
+	Name string
+
+	// InterfaceID is how the rest of the config refers to the group, such as `3/1`.
+	InterfaceID string
+
+	// Mode is `static` when the group declares staticcapability, `lacp` otherwise.
+	Mode     string
+	HashMode int64
+	Shutdown bool
+	Members  []string
 }
 
 // VLAN is an entry from the `vlan database` block, with the membership gathered
@@ -36,6 +54,10 @@ type Interface struct {
 	// those it carries tagged.
 	Participation []int64
 	Tagging       []int64
+
+	// LAG is the interface id of the group this port was added to, empty when the
+	// port stands alone.
+	LAG string
 }
 
 // ParseRunningConfig reads the output of `show running-config`. Unrecognized
@@ -45,11 +67,13 @@ func ParseRunningConfig(config string) *RunningConfig {
 	parsed := &RunningConfig{
 		VLANs:      map[int64]*VLAN{},
 		Interfaces: map[string]*Interface{},
+		LAGs:       map[int64]*LAG{},
 	}
 
 	var (
 		inDatabase bool
 		current    *Interface
+		currentLAG *LAG
 	)
 
 	for raw := range strings.SplitSeq(config, "\n") {
@@ -61,18 +85,31 @@ func ParseRunningConfig(config string) *RunningConfig {
 		if line == "exit" {
 			inDatabase = false
 			current = nil
+			currentLAG = nil
 			continue
 		}
 
 		if line == "vlan database" {
 			inDatabase = true
 			current = nil
+			currentLAG = nil
+			continue
+		}
+
+		if field, ok := strings.CutPrefix(line, "interface lag "); ok {
+			inDatabase = false
+			current = nil
+			currentLAG = nil
+			if id, ok := parseID(field); ok {
+				currentLAG = parsed.lag(id)
+			}
 			continue
 		}
 
 		if port, ok := strings.CutPrefix(line, "interface "); ok {
 			port = strings.TrimSpace(port)
 			inDatabase = false
+			currentLAG = nil
 			current = parsed.iface(port)
 			continue
 		}
@@ -80,6 +117,8 @@ func ParseRunningConfig(config string) *RunningConfig {
 		switch {
 		case inDatabase:
 			parsed.parseDatabaseLine(line)
+		case currentLAG != nil:
+			parseLAGLine(currentLAG, line)
 		case current != nil:
 			parsed.parseInterfaceLine(current, line)
 		}
@@ -122,6 +161,46 @@ func (c *RunningConfig) vlan(id int64) *VLAN {
 	c.VLANs[id] = vlan
 
 	return vlan
+}
+
+func (c *RunningConfig) lag(id int64) *LAG {
+	if existing, ok := c.LAGs[id]; ok {
+		return existing
+	}
+
+	lag := &LAG{
+		ID: id,
+		// FASTPATH numbers LAG interfaces in unit 3 on this hardware. A member port
+		// that names the group differently overrides this during resolution.
+		InterfaceID: "3/" + strconv.FormatInt(id, 10),
+		Mode:        "lacp",
+	}
+	c.LAGs[id] = lag
+
+	return lag
+}
+
+// LAG returns the group with the given id, and whether the config defines it.
+func (c *RunningConfig) LAG(id int64) (*LAG, bool) {
+	lag, ok := c.LAGs[id]
+	return lag, ok
+}
+
+func parseLAGLine(lag *LAG, line string) {
+	fields := strings.Fields(line)
+
+	switch {
+	case fields[0] == "description":
+		lag.Name = unquote(strings.Join(fields[1:], " "))
+	case line == "staticcapability":
+		lag.Mode = "static"
+	case line == "shutdown":
+		lag.Shutdown = true
+	case fields[0] == "hashing-mode" && len(fields) > 1:
+		if mode, ok := parseID(fields[1]); ok {
+			lag.HashMode = mode
+		}
+	}
 }
 
 func (c *RunningConfig) parseDatabaseLine(line string) {
@@ -174,13 +253,33 @@ func (c *RunningConfig) parseInterfaceLine(iface *Interface, line string) {
 		iface.Participation = append(iface.Participation, parseIDList(fields[3])...)
 	case strings.HasPrefix(line, "vlan tagging ") && len(fields) > 2:
 		iface.Tagging = append(iface.Tagging, parseIDList(fields[2])...)
+	case fields[0] == "addport" && len(fields) > 1:
+		iface.LAG = fields[1]
 	}
 }
 
-// resolveMembership folds the per interface participation lines back onto the
-// VLANs they reference, which is how the provider models membership.
+// resolveMembership folds the per interface participation and addport lines back
+// onto the VLANs and LAGs they reference, which is how the provider models
+// membership. Ports are visited in a stable order so the resulting lists do not
+// depend on map iteration.
 func (c *RunningConfig) resolveMembership() {
-	for _, iface := range c.Interfaces {
+	ports := make([]string, 0, len(c.Interfaces))
+	for port := range c.Interfaces {
+		ports = append(ports, port)
+	}
+	slices.Sort(ports)
+
+	for _, port := range ports {
+		iface := c.Interfaces[port]
+
+		if iface.LAG != "" {
+			if id, ok := lagIDFromInterface(iface.LAG); ok {
+				lag := c.lag(id)
+				lag.InterfaceID = iface.LAG
+				lag.Members = append(lag.Members, iface.Port)
+			}
+		}
+
 		tagged := map[int64]bool{}
 		for _, id := range iface.Tagging {
 			tagged[id] = true
@@ -195,6 +294,16 @@ func (c *RunningConfig) resolveMembership() {
 			}
 		}
 	}
+}
+
+// lagIDFromInterface reads the group number off a LAG interface id such as `3/1`.
+func lagIDFromInterface(interfaceID string) (int64, bool) {
+	_, number, found := strings.Cut(interfaceID, "/")
+	if !found {
+		return 0, false
+	}
+
+	return parseID(number)
 }
 
 func parseID(field string) (int64, bool) {

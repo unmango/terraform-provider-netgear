@@ -19,6 +19,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
+const (
+	lagModeLACP   = "lacp"
+	lagModeStatic = "static"
+)
+
 var (
 	_ resource.Resource                = &lagResource{}
 	_ resource.ResourceWithConfigure   = &lagResource{}
@@ -53,7 +58,10 @@ func (r *lagResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 		MarkdownDescription: "A link aggregation group.\n\n" +
 			"FASTPATH moves VLAN configuration from member ports onto the LAG interface, so a port " +
 			"listed in `members` should not have its VLAN settings managed elsewhere. Reference " +
-			"`interface_id` from a `netgear_vlan` to put the LAG in a VLAN.",
+			"`interface_id` from a `netgear_vlan` to put the LAG in a VLAN.\n\n" +
+			"~> The CLI is undocumented on smart switches. This resource uses the `interface lag <id>` " +
+			"form with `addport` and `deleteport`, and `staticcapability` for static mode. Firmware " +
+			"that spells these differently rejects the commands with an invalid input error.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				MarkdownDescription: "The LAG id as a string. Used as the import id.",
@@ -80,9 +88,9 @@ func (r *lagResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 				MarkdownDescription: "`lacp` for 802.3ad negotiation, or `static` for an unconditional bundle.",
 				Optional:            true,
 				Computed:            true,
-				Default:             stringdefault.StaticString("lacp"),
+				Default:             stringdefault.StaticString(lagModeLACP),
 				Validators: []validator.String{
-					stringvalidator.OneOf("lacp", "static"),
+					stringvalidator.OneOf(lagModeLACP, lagModeStatic),
 				},
 			},
 			"members": schema.SetAttribute{
@@ -122,17 +130,50 @@ func (r *lagResource) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
-	// configure
-	// interface lag <lag_id>
-	// description "<name>"
-	// staticcapability                 (static mode only)
-	// hashing-mode <hash_mode>
-	// no shutdown | shutdown
-	// exit
-	// then per member:
-	// interface <port>
-	// addport <interface_id>
-	resp.Diagnostics.Append(notImplemented("netgear_lag", "Create")...)
+	if r.data == nil {
+		resp.Diagnostics.Append(errNotConfigured("netgear_lag")...)
+		return
+	}
+
+	members, ok := portSet(ctx, plan.Members, &resp.Diagnostics)
+	if !ok {
+		return
+	}
+
+	id := plan.LagID.ValueInt64()
+	interfaceID := lagInterfaceID(id)
+
+	cmds := []string{"configure", "interface lag " + itoa(id)}
+	if !plan.Name.IsNull() {
+		cmds = append(cmds, "description "+quote(plan.Name.ValueString()))
+	}
+	if plan.Mode.ValueString() == lagModeStatic {
+		cmds = append(cmds, "staticcapability")
+	}
+	if !plan.HashMode.IsNull() {
+		cmds = append(cmds, "hashing-mode "+itoa(plan.HashMode.ValueInt64()))
+	}
+	if plan.Enabled.ValueBool() {
+		cmds = append(cmds, "no shutdown")
+	} else {
+		cmds = append(cmds, "shutdown")
+	}
+	cmds = append(cmds, "exit")
+
+	for _, port := range sortedKeys(members) {
+		cmds = append(cmds, "interface "+port, "addport "+interfaceID, "exit")
+	}
+	cmds = append(cmds, "exit")
+
+	if _, err := r.data.apply(ctx, cmds...); err != nil {
+		resp.Diagnostics.AddError("Unable to Create the LAG", err.Error())
+		return
+	}
+
+	plan.ID = types.StringValue(itoa(id))
+	plan.InterfaceID = types.StringValue(interfaceID)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
 func (r *lagResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -142,9 +183,32 @@ func (r *lagResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		return
 	}
 
-	// Parse `show port-channel <interface_id>` for members and mode, falling back
-	// to the running config. A missing LAG calls resp.State.RemoveResource(ctx).
-	resp.Diagnostics.Append(notImplemented("netgear_lag", "Read")...)
+	if r.data == nil {
+		resp.Diagnostics.Append(errNotConfigured("netgear_lag")...)
+		return
+	}
+
+	config, err := r.data.runningConfig(ctx)
+	if err != nil {
+		resp.Diagnostics.AddError("Unable to Read the Switch Configuration", err.Error())
+		return
+	}
+
+	lag, found := config.LAG(state.LagID.ValueInt64())
+	if !found {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	state.ID = types.StringValue(itoa(lag.ID))
+	state.InterfaceID = types.StringValue(lag.InterfaceID)
+	state.Name = stringOrNull(state.Name, lag.Name)
+	state.Mode = types.StringValue(lag.Mode)
+	state.Enabled = types.BoolValue(!lag.Shutdown)
+	state.HashMode = int64OrNull(state.HashMode, lag.HashMode)
+	state.Members = stringSet(lag.Members)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 func (r *lagResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -155,10 +219,90 @@ func (r *lagResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
-	// Diff members against state: `deleteport <interface_id>` for removals,
-	// `addport <interface_id>` for additions, both from the member port's own
-	// interface context. Mode changes toggle `staticcapability`.
-	resp.Diagnostics.Append(notImplemented("netgear_lag", "Update")...)
+	if r.data == nil {
+		resp.Diagnostics.Append(errNotConfigured("netgear_lag")...)
+		return
+	}
+
+	planned, ok := portSet(ctx, plan.Members, &resp.Diagnostics)
+	if !ok {
+		return
+	}
+	current, ok := portSet(ctx, state.Members, &resp.Diagnostics)
+	if !ok {
+		return
+	}
+
+	id := plan.LagID.ValueInt64()
+	interfaceID := state.InterfaceID.ValueString()
+	if interfaceID == "" {
+		interfaceID = lagInterfaceID(id)
+	}
+
+	var settings []string
+	if !plan.Name.Equal(state.Name) {
+		if plan.Name.IsNull() {
+			settings = append(settings, "no description")
+		} else {
+			settings = append(settings, "description "+quote(plan.Name.ValueString()))
+		}
+	}
+	if !plan.Mode.Equal(state.Mode) {
+		if plan.Mode.ValueString() == lagModeStatic {
+			settings = append(settings, "staticcapability")
+		} else {
+			settings = append(settings, "no staticcapability")
+		}
+	}
+	if !plan.HashMode.Equal(state.HashMode) {
+		if plan.HashMode.IsNull() {
+			settings = append(settings, "no hashing-mode")
+		} else {
+			settings = append(settings, "hashing-mode "+itoa(plan.HashMode.ValueInt64()))
+		}
+	}
+	if !plan.Enabled.Equal(state.Enabled) {
+		if plan.Enabled.ValueBool() {
+			settings = append(settings, "no shutdown")
+		} else {
+			settings = append(settings, "shutdown")
+		}
+	}
+
+	var cmds []string
+	if len(settings) > 0 {
+		cmds = append(cmds, "interface lag "+itoa(id))
+		cmds = append(cmds, settings...)
+		cmds = append(cmds, "exit")
+	}
+
+	// A port leaves the group from its own interface context, and so does a port
+	// joining it, which is why membership is not part of the settings block.
+	for _, port := range sortedKeys(current) {
+		if _, kept := planned[port]; !kept {
+			cmds = append(cmds, "interface "+port, "deleteport "+interfaceID, "exit")
+		}
+	}
+	for _, port := range sortedKeys(planned) {
+		if _, joined := current[port]; !joined {
+			cmds = append(cmds, "interface "+port, "addport "+interfaceID, "exit")
+		}
+	}
+
+	if len(cmds) > 0 {
+		cmds = append([]string{"configure"}, cmds...)
+		cmds = append(cmds, "exit")
+
+		if _, err := r.data.apply(ctx, cmds...); err != nil {
+			resp.Diagnostics.AddError("Unable to Update the LAG", err.Error())
+			return
+		}
+	}
+
+	plan.ID = types.StringValue(itoa(id))
+	plan.InterfaceID = types.StringValue(interfaceID)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
 func (r *lagResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -168,8 +312,37 @@ func (r *lagResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 		return
 	}
 
-	// Remove every member with `deleteport`, then `no interface lag <lag_id>`.
-	resp.Diagnostics.Append(notImplemented("netgear_lag", "Delete")...)
+	if r.data == nil {
+		resp.Diagnostics.Append(errNotConfigured("netgear_lag")...)
+		return
+	}
+
+	members, ok := portSet(ctx, state.Members, &resp.Diagnostics)
+	if !ok {
+		return
+	}
+
+	id := state.LagID.ValueInt64()
+	interfaceID := state.InterfaceID.ValueString()
+	if interfaceID == "" {
+		interfaceID = lagInterfaceID(id)
+	}
+
+	cmds := []string{"configure"}
+	for _, port := range sortedKeys(members) {
+		cmds = append(cmds, "interface "+port, "deleteport "+interfaceID, "exit")
+	}
+	cmds = append(cmds, "no interface lag "+itoa(id), "exit")
+
+	if _, err := r.data.apply(ctx, cmds...); err != nil {
+		resp.Diagnostics.AddError("Unable to Delete the LAG", err.Error())
+	}
+}
+
+// lagInterfaceID is the interface id FASTPATH gives a group, which other commands
+// reference in place of a physical port.
+func lagInterfaceID(id int64) string {
+	return "3/" + itoa(id)
 }
 
 func (r *lagResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {

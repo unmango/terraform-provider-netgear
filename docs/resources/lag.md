@@ -5,6 +5,7 @@ subcategory: ""
 description: |-
   A link aggregation group.
   FASTPATH moves VLAN configuration from member ports onto the LAG interface, so a port listed in members should not have its VLAN settings managed elsewhere. Reference interface_id from a netgear_vlan to put the LAG in a VLAN.
+  ~> The CLI is undocumented on smart switches. This resource uses the interface lag <id> form with addport and deleteport, and staticcapability for static mode. Firmware that spells these differently rejects the commands with an invalid input error.
 ---
 
 # netgear_lag (Resource)
@@ -12,6 +13,8 @@ description: |-
 A link aggregation group.
 
 FASTPATH moves VLAN configuration from member ports onto the LAG interface, so a port listed in `members` should not have its VLAN settings managed elsewhere. Reference `interface_id` from a `netgear_vlan` to put the LAG in a VLAN.
+
+~> The CLI is undocumented on smart switches. This resource uses the `interface lag <id>` form with `addport` and `deleteport`, and `staticcapability` for static mode. Firmware that spells these differently rejects the commands with an invalid input error.
 
 ## Example Usage
 

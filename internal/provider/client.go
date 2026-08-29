@@ -124,14 +124,3 @@ func portSet(ctx context.Context, set types.Set, diags *diag.Diagnostics) (map[s
 
 	return ports, true
 }
-
-// notImplemented reports that a CRUD method has a schema but no FASTPATH client
-// behind it yet.
-func notImplemented(resourceType, method string) diag.Diagnostics {
-	var diags diag.Diagnostics
-	diags.AddError(
-		"Not Implemented",
-		fmt.Sprintf("%s %s is not implemented: the FASTPATH CLI client is still to be written.", resourceType, method),
-	)
-	return diags
-}
