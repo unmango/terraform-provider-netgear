@@ -252,7 +252,14 @@ func (p *netgearProvider) Resources(ctx context.Context) []func() resource.Resou
 }
 
 func (p *netgearProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
-	return nil
+	return []func() datasource.DataSource{
+		NewVlanDataSource,
+		NewVlansDataSource,
+		NewInterfaceDataSource,
+		NewInterfacesDataSource,
+		NewLagDataSource,
+		NewLagsDataSource,
+	}
 }
 
 func stringOrEnv(value types.String, env, fallback string) string {

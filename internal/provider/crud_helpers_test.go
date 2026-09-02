@@ -3,6 +3,8 @@ package provider
 import (
 	"context"
 
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	dschema "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	rschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -74,4 +76,45 @@ func readState[T any](ctx context.Context, state tfsdk.State) T {
 // testSwitch is a resource's dependency wired to a fake client.
 func testSwitch(client *fakeClient) *switchData {
 	return &switchData{client: client, saveConfig: true}
+}
+
+// dataSchemaOf populates a data source's schema and asserts it produced no
+// diagnostics.
+func dataSchemaOf(ctx context.Context, d datasource.DataSource) dschema.Schema {
+	GinkgoHelper()
+
+	resp := &datasource.SchemaResponse{}
+	d.Schema(ctx, datasource.SchemaRequest{}, resp)
+
+	Expect(resp.Diagnostics.HasError()).To(BeFalse(), "%v", resp.Diagnostics)
+
+	return resp.Schema
+}
+
+// configFor builds the configuration a data source reads its lookup key from.
+func configFor(ctx context.Context, d datasource.DataSource, model any) tfsdk.Config {
+	GinkgoHelper()
+
+	schema := dataSchemaOf(ctx, d)
+
+	// tfsdk.Config has no Set, so the value is built through a state and handed
+	// over: both are the same object type behind the same schema.
+	state := tfsdk.State{
+		Schema: schema,
+		Raw:    tftypes.NewValue(schema.Type().TerraformType(ctx), nil),
+	}
+
+	Expect(state.Set(ctx, model).HasError()).To(BeFalse())
+
+	return tfsdk.Config{Schema: schema, Raw: state.Raw}
+}
+
+// blankDataState is the empty state a data source Read writes into.
+func blankDataState(ctx context.Context, d datasource.DataSource) tfsdk.State {
+	schema := dataSchemaOf(ctx, d)
+
+	return tfsdk.State{
+		Schema: schema,
+		Raw:    tftypes.NewValue(schema.Type().TerraformType(ctx), nil),
+	}
 }

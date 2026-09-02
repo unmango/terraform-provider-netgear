@@ -42,3 +42,9 @@ func IsPortID(id string) bool {
 
 	return slotPortRe.MatchString(normalized)
 }
+
+// IsLAG reports whether a port id names a link aggregation group rather than a
+// physical port. Both spellings are recognized, `lag 1` and `3/1`.
+func IsLAG(id string) bool {
+	return strings.HasPrefix(NormalizePort(id), lagUnit)
+}

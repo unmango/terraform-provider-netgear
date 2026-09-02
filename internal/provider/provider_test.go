@@ -63,4 +63,12 @@ var _ = Describe("Provider", func() {
 
 		Expect(resources).To(HaveLen(3))
 	})
+
+	It("should register the switch data sources", func(ctx SpecContext) {
+		p := provider.New("test")()
+
+		dataSources := p.DataSources(ctx)
+
+		Expect(dataSources).To(HaveLen(6))
+	})
 })

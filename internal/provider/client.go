@@ -73,6 +73,18 @@ func (d *switchData) readStatus(ctx context.Context, port string) (fastpath.Port
 	return fastpath.ParsePortStatus(out)[fastpath.NormalizePort(port)], nil
 }
 
+// readAllStatus reports the operational state of every port the switch knows,
+// keyed by port id in the slot form. LAG interfaces appear alongside physical
+// ports; `fastpath.IsLAG` tells them apart.
+func (d *switchData) readAllStatus(ctx context.Context) (map[string]fastpath.PortStatus, error) {
+	out, err := d.client.Run(ctx, "show port all")
+	if err != nil {
+		return nil, err
+	}
+
+	return fastpath.ParsePortStatus(out), nil
+}
+
 // switchFromProviderData extracts the configured switch from resource or data
 // source provider data. It returns nil when the framework has not configured the
 // provider yet, which is expected during validation and planning.

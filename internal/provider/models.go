@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"cmp"
 	"slices"
 	"strconv"
 	"strings"
@@ -73,4 +74,61 @@ func sortedKeys(ports map[string]struct{}) []string {
 	slices.Sort(keys)
 
 	return keys
+}
+
+// int64Set builds a set attribute value from vlan ids, in a stable order.
+func int64Set(values []int64) types.Set {
+	sorted := slices.Clone(values)
+	slices.Sort(sorted)
+	sorted = slices.Compact(sorted)
+
+	elements := make([]attr.Value, 0, len(sorted))
+	for _, value := range sorted {
+		elements = append(elements, types.Int64Value(value))
+	}
+
+	return types.SetValueMust(types.Int64Type, elements)
+}
+
+// sortedPorts orders port ids the way the switch numbers them, so `0/10` follows
+// `0/9` rather than `0/1`. Ids that are not in the slot form sort last, by name.
+func sortedPorts(ports []string) []string {
+	sorted := slices.Clone(ports)
+	slices.SortFunc(sorted, func(a, b string) int {
+		unitA, portA, okA := splitPort(a)
+		unitB, portB, okB := splitPort(b)
+
+		switch {
+		case okA && okB:
+			return cmp.Or(cmp.Compare(unitA, unitB), cmp.Compare(portA, portB))
+		case okA:
+			return -1
+		case okB:
+			return 1
+		default:
+			return strings.Compare(a, b)
+		}
+	})
+
+	return sorted
+}
+
+// splitPort reads the unit and port halves of an id in the slot form.
+func splitPort(id string) (int64, int64, bool) {
+	unit, port, found := strings.Cut(id, "/")
+	if !found {
+		return 0, 0, false
+	}
+
+	u, err := strconv.ParseInt(unit, 10, 64)
+	if err != nil {
+		return 0, 0, false
+	}
+
+	p, err := strconv.ParseInt(port, 10, 64)
+	if err != nil {
+		return 0, 0, false
+	}
+
+	return u, p, true
 }
