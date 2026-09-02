@@ -11,7 +11,7 @@ The project is nix first: the flake builds the provider with gomod2nix and provi
 
 - `make build` runs `nix build .#`, which builds via `nix/default.nix` (`buildGoApplication`) and runs Ginkgo in its checkPhase.
 - `make test` runs `go tool ginkgo run -r`.
-- `make test-acc` runs acceptance tests (`TF_ACC=1 go test ./...`) against OpenTofu using the `TF_ACC_*` variables set by the dev shell.
+- `make test-acc` runs acceptance tests (`TF_ACC=1 go test ./...`) against OpenTofu using the `TF_ACC_*` variables set by the dev shell. They drive a real switch and skip unless `NETGEAR_HOST` and `NETGEAR_PASSWORD` are set, which is why CI does not run them. `NETGEAR_ACC_VLAN_ID`, `NETGEAR_ACC_PORT`, `NETGEAR_ACC_PORT_2`, and `NETGEAR_ACC_LAG_ID` choose what they touch; the defaults are what the reference GS724Tv4 leaves unused.
 - `make lint` runs `golangci-lint run ./...` and `nix flake check` (treefmt formatting plus package checks).
 - `make fmt` runs `nix fmt` (treefmt: gofmt, nixfmt, mdformat, actionlint, shellcheck).
 - `make docs` runs `tfplugindocs generate`; generated files in `docs/` must not be hand-edited and are verified by the CI codegen job.
