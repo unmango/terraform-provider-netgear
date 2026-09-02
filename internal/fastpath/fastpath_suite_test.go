@@ -1,0 +1,13 @@
+package fastpath_test
+
+import (
+	"testing"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+)
+
+func TestFastpath(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "Fastpath Suite")
+}
