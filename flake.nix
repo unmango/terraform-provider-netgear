@@ -68,7 +68,10 @@
             shellcheck.enable = true;
           };
 
+          # mdformat rewrites YAML frontmatter as a heading, which breaks generated
+          # docs pages and agent skills alike.
           treefmt.settings.formatter.mdformat.excludes = [
+            ".github/skills/**"
             "CHANGELOG.md"
             "docs/index.md"
             "docs/data-sources/**"
