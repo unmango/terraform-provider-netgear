@@ -262,8 +262,8 @@ func (s *session) write(ctx context.Context, b []byte) error {
 }
 
 // readUntil reads until one of exps matches the tail of the buffer. It returns
-// everything read up to and including the match, with the matched text removed,
-// and the index of the expression that matched.
+// everything read before the match and the index of the expression that matched.
+// The matched text itself is consumed from the buffer and kept in lastMatch.
 func (s *session) readUntil(ctx context.Context, exps ...*regexp.Regexp) (string, int, error) {
 	for {
 		for i, exp := range exps {

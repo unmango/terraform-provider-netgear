@@ -60,10 +60,12 @@ func (r *vlanResource) Schema(ctx context.Context, req resource.SchemaRequest, r
 				},
 			},
 			"vlan_id": schema.Int64Attribute{
-				MarkdownDescription: "The 802.1Q VLAN id. Changing this replaces the VLAN.",
-				Required:            true,
+				MarkdownDescription: "The 802.1Q VLAN id. Changing this replaces the VLAN.\n\n" +
+					"VLAN 1 is built into FASTPATH and never appears in the running config, so it " +
+					"cannot be managed here.",
+				Required: true,
 				Validators: []validator.Int64{
-					int64validator.Between(1, 4093),
+					int64validator.Between(2, 4093),
 				},
 				PlanModifiers: []planmodifier.Int64{
 					int64planmodifier.RequiresReplace(),
@@ -385,6 +387,14 @@ func (r *vlanResource) ImportState(ctx context.Context, req resource.ImportState
 		resp.Diagnostics.AddError(
 			"Invalid Import Id",
 			"Expected a VLAN id such as \"10\", got "+req.ID+".",
+		)
+		return
+	}
+
+	if id == 1 {
+		resp.Diagnostics.AddError(
+			"Cannot Import the Default VLAN",
+			"VLAN 1 is built into FASTPATH and never appears in the running config, so it cannot be managed.",
 		)
 		return
 	}

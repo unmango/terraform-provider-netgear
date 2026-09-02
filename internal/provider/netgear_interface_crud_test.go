@@ -168,6 +168,22 @@ exit
 			Expect(refreshed.MTU.IsNull()).To(BeTrue())
 		})
 
+		It("should keep a port the config omits but the switch reports", func(ctx SpecContext) {
+			client.output["show port 0/3"] = "g3  Enable  Auto  Up  Enable  Enable  Disable"
+			state := ifaceState(ctx, enabledPort("0/3"))
+			resp := &resource.ReadResponse{State: state}
+
+			r.Read(ctx, resource.ReadRequest{State: state}, resp)
+
+			refreshed := readIfaceState(ctx, resp.State)
+
+			Expect(resp.Diagnostics.HasError()).To(BeFalse(), "%v", resp.Diagnostics)
+			Expect(resp.State.Raw.IsNull()).To(BeFalse())
+			Expect(refreshed.Description.IsNull()).To(BeTrue())
+			Expect(refreshed.Enabled).To(Equal(types.BoolValue(true)))
+			Expect(refreshed.LinkStatus).To(Equal(types.StringValue("up")))
+		})
+
 		It("should drop a port the switch does not report", func(ctx SpecContext) {
 			state := ifaceState(ctx, enabledPort("0/48"))
 			resp := &resource.ReadResponse{State: state}

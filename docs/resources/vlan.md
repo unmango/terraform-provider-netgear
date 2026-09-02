@@ -33,6 +33,8 @@ resource "netgear_vlan" "mgmt" {
 
 - `vlan_id` (Number) The 802.1Q VLAN id. Changing this replaces the VLAN.
 
+VLAN 1 is built into FASTPATH and never appears in the running config, so it cannot be managed here.
+
 ### Optional
 
 - `name` (String) VLAN name. FASTPATH accepts up to 32 characters.

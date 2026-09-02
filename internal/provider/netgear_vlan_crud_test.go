@@ -305,6 +305,25 @@ exit
 		})
 	})
 
+	Describe("ImportState", func() {
+		It("should read the vlan id from the import id", func(ctx SpecContext) {
+			resp := &resource.ImportStateResponse{State: emptyState(ctx)}
+
+			r.ImportState(ctx, resource.ImportStateRequest{ID: "10"}, resp)
+
+			Expect(resp.Diagnostics.HasError()).To(BeFalse(), "%v", resp.Diagnostics)
+		})
+
+		It("should refuse to import vlan 1", func(ctx SpecContext) {
+			resp := &resource.ImportStateResponse{State: emptyState(ctx)}
+
+			r.ImportState(ctx, resource.ImportStateRequest{ID: "1"}, resp)
+
+			Expect(resp.Diagnostics.HasError()).To(BeTrue())
+			Expect(resp.Diagnostics.Errors()[0].Summary()).To(Equal("Cannot Import the Default VLAN"))
+		})
+	})
+
 	It("should report an unconfigured provider", func(ctx SpecContext) {
 		r.data = nil
 		plan := vlanPlan(ctx, vlanResourceModel{VlanID: types.Int64Value(10), Routing: types.BoolValue(false)})

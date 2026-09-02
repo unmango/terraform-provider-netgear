@@ -15,6 +15,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+
+	"github.com/unmango/terraform-provider-netgear/internal/fastpath"
 )
 
 // defaultPVID is the VLAN a port falls back to when its pvid is cleared.
@@ -197,10 +199,23 @@ func (r *interfaceResource) Read(ctx context.Context, req resource.ReadRequest, 
 
 	port := state.Port.ValueString()
 
-	iface, found := config.Interface(port)
-	if !found {
+	status, err := r.data.readStatus(ctx, port)
+	if err != nil {
+		resp.Diagnostics.AddError("Unable to Read the Port Status", err.Error())
+		return
+	}
+
+	iface, configured := config.Interface(port)
+	if !configured && !status.Known() {
 		resp.State.RemoveResource(ctx)
 		return
+	}
+
+	// A port left entirely at its defaults is not printed in the running config,
+	// so one the switch still reports reads as an interface with nothing set
+	// rather than as a port that is gone.
+	if iface == nil {
+		iface = &fastpath.Interface{Port: fastpath.NormalizePort(port)}
 	}
 
 	state.ID = types.StringValue(port)
@@ -209,11 +224,8 @@ func (r *interfaceResource) Read(ctx context.Context, req resource.ReadRequest, 
 	state.Speed = stringOrNull(state.Speed, iface.Speed)
 	state.PVID = int64OrNull(state.PVID, iface.PVID)
 	state.MTU = int64OrNull(state.MTU, iface.MTU)
-
-	r.applyStatus(ctx, &state, &resp.Diagnostics)
-	if resp.Diagnostics.HasError() {
-		return
-	}
+	state.AdminStatus = types.StringValue(status.AdminStatus)
+	state.LinkStatus = types.StringValue(status.LinkStatus)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
