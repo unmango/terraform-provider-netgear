@@ -30,7 +30,7 @@ A claim about the switch that contradicts it is wrong; a claim it does not cover
 
 ## Codebase conventions
 
-- CRUD is covered by specs that assert the exact list of commands sent to the switch, using the `fakeClient` in `internal/provider/fake_client_test.go` and the helpers in `crud_helpers_test.go`.
+- CRUD is covered by specs that assert the exact list of commands sent to the switch, using the `fakeClient` in `internal/provider/fake_client_test.go` and the helpers in `internal/provider/crud_helpers_test.go`.
   A change that sends a new command needs a spec in the matching `netgear_*_crud_test.go` or `*_read_test.go`.
 - Ginkgo and Gomega throughout, one `*_suite_test.go` per package.
 - Resources and data sources use unexported types with `New<Name>Resource` and `New<Name>DataSource` constructors, and interface assertions at the top of the file.
