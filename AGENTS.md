@@ -34,7 +34,9 @@ The project is nix first: the flake builds the provider with gomod2nix and provi
 ## Current state
 
 `internal/fastpath` speaks the FASTPATH CLI over telnet: login flow detection, telnet option refusal, prompt matching, CLI error detection, NVRAM save, and parsers for `show running-config` and `show port`.
-`netgear_vlan`, `netgear_interface`, and `netgear_lag` are implemented against it. There are no data sources.
+`netgear_vlan`, `netgear_interface`, and `netgear_lag` are implemented against it.
+Each has a matching data source, plus a plural `netgear_vlans`, `netgear_interfaces`, and `netgear_lags` that list what the switch has.
+The plural interface data source enumerates ports from `show port all` rather than the running config, because a port left at its defaults is not printed in the config.
 
 Ports are named two ways by the firmware, `g7` and `0/7`. Everything read off the switch is normalized to the slot form by `fastpath.NormalizePort`; see `docs/management-interfaces.md` for what has been verified on hardware.
 

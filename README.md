@@ -4,8 +4,12 @@ A Terraform/OpenTofu provider for NETGEAR devices, built with the [Terraform Plu
 
 ## Status
 
-Early skeleton.
-The provider builds and serves, but no resources or data sources are implemented yet.
+Working against a GS724Tv4 over the FASTPATH CLI.
+
+Resources: `netgear_vlan`, `netgear_interface`, `netgear_lag`.
+Data sources: `netgear_vlan`, `netgear_vlans`, `netgear_interface`, `netgear_interfaces`, `netgear_lag`, `netgear_lags`.
+
+See [`docs/management-interfaces.md`](docs/management-interfaces.md) for what has been verified on hardware.
 
 ## Usage
 
