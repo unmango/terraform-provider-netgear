@@ -29,7 +29,8 @@ The project is nix first: the flake builds the provider with gomod2nix and provi
 
 - release-please manages versioning and CHANGELOG from conventional commits; never hand-edit `VERSION`, the manifest, or CHANGELOG entries.
 - Tag pushes (`v*`) trigger goreleaser, which builds, zips, checksums, and GPG-signs registry artifacts.
-- Pending setup: the repo secrets `GPG_PRIVATE_KEY`, `PASSPHRASE`, and `RELEASE_PLEASE_TOKEN` are not configured yet, and the sops-encrypted release key (`secrets/`, `.sops.yaml`) from the terraform-provider-git convention is not present.
+- Artifacts are signed by a dedicated release key, `terraform-provider-netgear release signing`, fingerprint `28BBEF32809BE4D75E5AAA2B152839F1CCF000D0`. The private key and its passphrase live in `secrets/gpg-release-key.enc.yaml`, encrypted to the personal key named in `.sops.yaml`; read them with `sops --decrypt secrets/gpg-release-key.enc.yaml`. The same values are set as the repo secrets `GPG_PRIVATE_KEY` and `PASSPHRASE`.
+- Pending setup: `RELEASE_PLEASE_TOKEN` is not configured. The action needs a PAT rather than `GITHUB_TOKEN`, because a tag pushed with `GITHUB_TOKEN` does not trigger the goreleaser workflow. The public half of the signing key also has to be registered with the provider registry before a release verifies.
 
 ## Current state
 
