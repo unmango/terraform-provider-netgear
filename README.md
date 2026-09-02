@@ -17,7 +17,7 @@ See [`docs/management-interfaces.md`](docs/management-interfaces.md) for what ha
 terraform {
   required_providers {
     netgear = {
-      source = "UnstoppableMango/netgear"
+      source = "unmango/netgear"
     }
   }
 }

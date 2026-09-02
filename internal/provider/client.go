@@ -7,7 +7,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"github.com/UnstoppableMango/terraform-provider-netgear/internal/fastpath"
+	"github.com/unmango/terraform-provider-netgear/internal/fastpath"
 )
 
 // Client is the FASTPATH CLI surface the resources depend on.

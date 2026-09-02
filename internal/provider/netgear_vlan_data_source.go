@@ -7,7 +7,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"github.com/UnstoppableMango/terraform-provider-netgear/internal/fastpath"
+	"github.com/unmango/terraform-provider-netgear/internal/fastpath"
 )
 
 // defaultVlanID is the VLAN FASTPATH builds in, which the vlan database block

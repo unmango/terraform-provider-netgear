@@ -4,7 +4,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/UnstoppableMango/terraform-provider-netgear/internal/fastpath"
+	"github.com/unmango/terraform-provider-netgear/internal/fastpath"
 )
 
 var _ = Describe("Ports", func() {

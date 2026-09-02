@@ -4,7 +4,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/UnstoppableMango/terraform-provider-netgear/internal/fastpath"
+	"github.com/unmango/terraform-provider-netgear/internal/fastpath"
 )
 
 // showPort is `show port all` as a GS724Tv4 running 6.3.1.19 prints it.

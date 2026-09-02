@@ -1,4 +1,4 @@
-module github.com/UnstoppableMango/terraform-provider-netgear
+module github.com/unmango/terraform-provider-netgear
 
 go 1.26.5
 

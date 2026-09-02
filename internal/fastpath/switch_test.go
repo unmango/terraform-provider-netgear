@@ -7,7 +7,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 
-	"github.com/UnstoppableMango/terraform-provider-netgear/internal/fastpath"
+	"github.com/unmango/terraform-provider-netgear/internal/fastpath"
 )
 
 // saveCommand is the NVRAM write as a GS724Tv4 spells it.

@@ -7,7 +7,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 
-	"github.com/UnstoppableMango/terraform-provider-netgear/internal/provider"
+	"github.com/unmango/terraform-provider-netgear/internal/provider"
 )
 
 //go:generate tfplugindocs generate
@@ -21,7 +21,7 @@ func main() {
 	flag.Parse()
 
 	err := providerserver.Serve(context.Background(), provider.New(version), providerserver.ServeOpts{
-		Address: "registry.opentofu.org/UnstoppableMango/netgear",
+		Address: "registry.opentofu.org/unmango/netgear",
 		Debug:   debug,
 	})
 	if err != nil {
