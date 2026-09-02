@@ -5,6 +5,7 @@ subcategory: ""
 description: |-
   One VLAN as the switch has it configured, read from show running-config.
   Reading a VLAN the switch does not define is an error. Use netgear_vlans to discover which ids exist.
+  ~> VLAN 1 is built into FASTPATH and is not printed in the running config, so it cannot be read here.
 ---
 
 # netgear_vlan (Data Source)
@@ -12,6 +13,8 @@ description: |-
 One VLAN as the switch has it configured, read from `show running-config`.
 
 Reading a VLAN the switch does not define is an error. Use `netgear_vlans` to discover which ids exist.
+
+~> VLAN 1 is built into FASTPATH and is not printed in the running config, so it cannot be read here.
 
 ## Example Usage
 

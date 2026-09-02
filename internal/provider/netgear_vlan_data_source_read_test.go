@@ -86,6 +86,15 @@ var _ = Describe("VlanDataSource Read", func() {
 		Expect(resp.Diagnostics.Errors()[0].Summary()).To(Equal("VLAN Not Found"))
 	})
 
+	It("should say why the default vlan cannot be read", func(ctx SpecContext) {
+		resp := &datasource.ReadResponse{State: blankDataState(ctx, d)}
+
+		d.Read(ctx, datasource.ReadRequest{Config: vlanLookup(ctx, d, 1)}, resp)
+
+		Expect(resp.Diagnostics.HasError()).To(BeTrue())
+		Expect(resp.Diagnostics.Errors()[0].Detail()).To(ContainSubstring("built into FASTPATH"))
+	})
+
 	It("should surface a switch that cannot be read", func(ctx SpecContext) {
 		client.runErr = errSwitch
 		resp := &datasource.ReadResponse{State: blankDataState(ctx, d)}

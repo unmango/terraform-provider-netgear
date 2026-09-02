@@ -10,6 +10,10 @@ import (
 	"github.com/UnstoppableMango/terraform-provider-netgear/internal/fastpath"
 )
 
+// defaultVlanID is the VLAN FASTPATH builds in, which the vlan database block
+// never prints.
+const defaultVlanID = 1
+
 var (
 	_ datasource.DataSource              = &vlanDataSource{}
 	_ datasource.DataSourceWithConfigure = &vlanDataSource{}
@@ -89,7 +93,9 @@ func (d *vlanDataSource) Schema(ctx context.Context, req datasource.SchemaReques
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "One VLAN as the switch has it configured, read from `show running-config`.\n\n" +
 			"Reading a VLAN the switch does not define is an error. Use `netgear_vlans` to " +
-			"discover which ids exist.",
+			"discover which ids exist.\n\n" +
+			"~> VLAN 1 is built into FASTPATH and is not printed in the running config, so it " +
+			"cannot be read here.",
 		Attributes: attributes,
 	}
 }
@@ -120,10 +126,15 @@ func (d *vlanDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 
 	vlan, found := running.VLAN(id)
 	if !found {
-		resp.Diagnostics.AddError(
-			"VLAN Not Found",
-			"The switch has no VLAN "+itoa(id)+". Read netgear_vlans to see which ids it defines.",
-		)
+		detail := "The switch has no VLAN " + itoa(id) + ". Read netgear_vlans to see which ids it defines."
+		if id == defaultVlanID {
+			// The default VLAN is built into FASTPATH and the vlan database block
+			// never prints it, so there is nothing to report for it.
+			detail = "VLAN 1 is built into FASTPATH and does not appear in the running config, " +
+				"so the provider cannot read it. Reference the id directly instead."
+		}
+
+		resp.Diagnostics.AddError("VLAN Not Found", detail)
 		return
 	}
 

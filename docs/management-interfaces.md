@@ -113,6 +113,9 @@ Incorrect input! Use 'vlan  <vlan-range | all>'.
 The config writes `vlan participation auto 1` for the default VLAN.
 Only `include` counts as membership, so an `auto` line is deliberately ignored.
 
+VLAN 1 itself is absent from the `vlan database` block.
+The switch builds it in and never prints it, so a read of the running config sees every VLAN except the default one.
+
 LAG interfaces exist whether or not they are configured: `show port all` lists `lag 1` through `lag 26`, and `show port-channel all` gives each a default name of `ch1` and up.
 `no interface lag 1` is rejected for the same reason a port cannot be deleted, so removing a group means releasing its members and returning its settings to their defaults.
 
