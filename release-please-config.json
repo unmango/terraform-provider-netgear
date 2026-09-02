@@ -5,6 +5,7 @@
   "packages": {
     ".": {
       "release-type": "simple",
+      "initial-version": "0.1.0",
       "package-name": "terraform-provider-netgear",
       "include-component-in-tag": false,
       "extra-files": [

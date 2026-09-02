@@ -51,6 +51,7 @@
               nixfmt
               golangci-lint
               opentofu
+              sops
               terraform-plugin-docs
             ];
 
