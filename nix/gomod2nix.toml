@@ -130,12 +130,12 @@ schema = 3
     hash = 'sha256-fKsYC186cbOCJROZGUqU6UMSxvK2DZ44hlCEytLvp5c='
 
   [mod.'google.golang.org/genproto/googleapis/rpc']
-    version = 'v0.0.0-20251202230838-ff82c1b0f217'
-    hash = 'sha256-I3ZNpNjKKvTq4DVNw3wLKrCuORabZ0oYj0KKhOMI/MA='
+    version = 'v0.0.0-20260526163538-3dc84a4a5aaa'
+    hash = 'sha256-ldJTTb7hhj1mdmzTn9IEkQVwCoj3KRlENZtUSEKHABU='
 
   [mod.'google.golang.org/grpc']
-    version = 'v1.79.2'
-    hash = 'sha256-n6B5wCKUSOhABR0/Vl4NopD6cxV4qXAqS3EdCuc42G8='
+    version = 'v1.83.1'
+    hash = 'sha256-FpEi28U8I4/pzzfS+Gv4PySLcxkjVTy1pqtRlEDZJ54='
 
   [mod.'google.golang.org/protobuf']
     version = 'v1.36.11'
