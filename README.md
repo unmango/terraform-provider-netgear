@@ -44,8 +44,9 @@ make tidy      # regenerate go.sum and nix/gomod2nix.toml
 
 Run `make tidy` after changing dependencies so `nix/gomod2nix.toml` stays in sync with `go.mod`.
 
-Acceptance tests run against OpenTofu.
-The dev shell sets `TF_ACC_TERRAFORM_PATH` and related variables for you.
+Acceptance tests run against OpenTofu and a real switch.
+The dev shell sets `TF_ACC_TERRAFORM_PATH` and related variables for you; set `NETGEAR_HOST` and `NETGEAR_PASSWORD` to point them at hardware.
+Without those they skip, so `make test-acc` is safe to run anywhere.
 
 ## License
 
