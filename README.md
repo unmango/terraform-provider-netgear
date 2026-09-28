@@ -1,5 +1,7 @@
 # terraform-provider-netgear
 
+[![Hercules CI](https://hercules-ci.com/api/v1/site/github/account/unmango/project/terraform-provider-netgear/badge)](https://hercules-ci.com/github/unmango/terraform-provider-netgear)
+
 A Terraform/OpenTofu provider for NETGEAR devices, built with the [Terraform Plugin Framework](https://developer.hashicorp.com/terraform/plugin/framework).
 
 ## Status
