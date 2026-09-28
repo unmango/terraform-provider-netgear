@@ -174,12 +174,12 @@ schema = 3
     hash = 'sha256-cjt2KtX55AdhwTyxNXGMEvYORcFphCI6GUbeIrsmnas='
 
   [mod.'github.com/onsi/ginkgo/v2']
-    version = 'v2.32.1'
-    hash = 'sha256-BlFk4ihzvIRKQibqkJ8/7ZhUZXsI9YhsKgKrQR8n54k='
+    version = 'v2.33.0'
+    hash = 'sha256-dbprIPI9nmIWGqO9p1kG5W5rDpcDMZwvigmd3CmG3Sk='
 
   [mod.'github.com/onsi/gomega']
-    version = 'v1.42.1'
-    hash = 'sha256-VtQLikXkQ4mhZaT8SfEcVsaDodZIewo9WVNPJhiZf14='
+    version = 'v1.44.0'
+    hash = 'sha256-xSjOiuDOVt9GGtagJPD8UF3Do3ZnkgaQ3CALnONJk6Y='
 
   [mod.'github.com/vmihailenco/msgpack']
     version = 'v4.0.4+incompatible'
@@ -198,8 +198,8 @@ schema = 3
     hash = 'sha256-GNYRehTHWk++QZy9B30zitBeMHgrd3g3wLno3gYNkes='
 
   [mod.'go.yaml.in/yaml/v3']
-    version = 'v3.0.4'
-    hash = 'sha256-NkGFiDPoCxbr3LFsI6OCygjjkY0rdmg5ggvVVwpyDQ4='
+    version = 'v3.0.5'
+    hash = 'sha256-ygho+GU5kE7vPMx+dZYyNfCaeMjNxj66XmrcVf3afFE='
 
   [mod.'golang.org/x/crypto']
     version = 'v0.53.0'
