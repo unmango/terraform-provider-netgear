@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 // Acceptance tests drive OpenTofu against a real switch. There is no fake:
@@ -217,11 +218,33 @@ data "netgear_lags" "all" {}`,
 					}),
 					// Ports are the slot form and LAG interfaces live in unit 3,
 					// which netgear_lags reports instead.
-					resource.TestMatchResourceAttr("data.netgear_interfaces.all", "interfaces.0.port", regexp.MustCompile(`^0/\d+$`)),
+					testCheckEveryInterfaceIsPort("data.netgear_interfaces.all"),
 					resource.TestCheckResourceAttrSet("data.netgear_vlans.all", "vlans.#"),
 					resource.TestCheckResourceAttrSet("data.netgear_lags.all", "lags.#"),
 				),
 			},
 		},
 	})
+}
+
+// testCheckEveryInterfaceIsPort fails if any entry in a netgear_interfaces
+// list is not a physical port in the slot form.
+func testCheckEveryInterfaceIsPort(name string) resource.TestCheckFunc {
+	key := regexp.MustCompile(`^interfaces\.\d+\.port$`)
+	port := regexp.MustCompile(`^0/\d+$`)
+
+	return func(s *terraform.State) error {
+		rs, ok := s.RootModule().Resources[name]
+		if !ok {
+			return fmt.Errorf("%s not found in state", name)
+		}
+
+		for k, v := range rs.Primary.Attributes {
+			if key.MatchString(k) && !port.MatchString(v) {
+				return fmt.Errorf("%s: %s is %q, want a physical port", name, k, v)
+			}
+		}
+
+		return nil
+	}
 }

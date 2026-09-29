@@ -49,6 +49,7 @@ Run `make tidy` after changing dependencies so `nix/gomod2nix.toml` stays in syn
 Acceptance tests run against OpenTofu and a real switch.
 The dev shell sets `TF_ACC_TERRAFORM_PATH` and related variables for you; set `NETGEAR_HOST` and `NETGEAR_PASSWORD` to point them at hardware.
 Without those they skip, so `make test-acc` is safe to run anywhere.
+The tests change the VLAN, ports, and LAG named by `NETGEAR_ACC_VLAN_ID`, `NETGEAR_ACC_PORT`, `NETGEAR_ACC_PORT_2`, and `NETGEAR_ACC_LAG_ID`, whose defaults (4090, 0/26, 0/25, 26) are unused only on the reference GS724Tv4, so set them to identifiers your switch does not use.
 
 ## License
 
