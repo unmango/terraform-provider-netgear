@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.1](https://github.com/unmango/terraform-provider-netgear/compare/v0.1.0...v0.1.1) (2026-10-06)
+
+
+### Tests
+
+* drive the switch through acceptance tests ([#6](https://github.com/unmango/terraform-provider-netgear/issues/6)) ([df6f772](https://github.com/unmango/terraform-provider-netgear/commit/df6f7723cb9d2ceb2d7d9f85f6e5c55f40a80556))
+
+
+### Continuous Integration
+
+* tag releases with the release app so goreleaser runs ([#30](https://github.com/unmango/terraform-provider-netgear/issues/30)) ([1bbd52a](https://github.com/unmango/terraform-provider-netgear/commit/1bbd52a76ff31baccd42cd60d027fc53a0192386))
+
 ## 0.1.0 (2026-09-28)
 
 
